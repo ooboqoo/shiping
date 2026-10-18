@@ -36,9 +36,9 @@ export function ConversationStatusBar() {
     <div className="flex h-8 shrink-0 items-center gap-3 border-t border-app-border bg-app-status px-3 text-xs text-app-status-fg select-none">
       <button className="flex items-center gap-1 cursor-pointer" onClick={toggleListening}>
         {isTranscribing ? (
-          <Mic className="size-3.5 animate-pulse text-green-500" />
+          <Mic className="size-3.5" />
         ) : (
-          <MicOff className="size-3.5 opacity-70" />
+          <MicOff className="size-3.5 opacity-55" />
         )}
         {isTranscribing ? '停止监听' : '开始监听'}
         {key('toggleTranscription')}

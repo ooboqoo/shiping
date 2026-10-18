@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import type { TranscriptionPurpose } from './transcription'
 
 /**
  * Runs when the page on screen changes. Click-through is suspended while the
@@ -39,7 +40,14 @@ export const state = {
    * would leave the user with a window they cannot click.
    */
   inSettingsPage: false,
-  ignoreMouse: false
+  ignoreMouse: false,
+  /**
+   * The mode speech recognition is running for, or null. Main's own (see
+   * shortcuts.ts): the toolbar's microphone button shows it
+   */
+  listening: null as TranscriptionPurpose | null,
+  /** Recognition last ended on an error rather than being stopped; cleared when it starts again */
+  listenFailed: false
 }
 
 export type AppState = typeof state

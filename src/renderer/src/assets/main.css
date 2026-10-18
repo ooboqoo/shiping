@@ -93,6 +93,22 @@
   @apply size-3.5;
 }
 
+/* The microphone of the toolbar and the 极简悬浮条 (micButton()): quiet on
+   purpose, for the user's eyes only. The slash and a small dot tell the
+   states apart, without a colour fill or animation. All of it is drawn in
+   windows under content protection, so no state reaches a shared screen */
+.overlay-toolbar button.mic-off svg {
+  @apply opacity-55;
+}
+.overlay-toolbar button.mic-listening::after,
+.overlay-toolbar button.mic-failed::after {
+  content: '';
+  @apply pointer-events-none absolute top-1 right-1 size-1 rounded-full bg-current opacity-70;
+}
+.overlay-toolbar button.mic-failed::after {
+  @apply bg-red-400 opacity-60;
+}
+
 /* Fills up over the dwell time, so hover-to-trigger is visible before it fires */
 .dwell-progress {
   @apply pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left;

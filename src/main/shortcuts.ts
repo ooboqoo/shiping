@@ -35,7 +35,13 @@ import { handleGeneratedCode } from './save-code'
 import { getSolutionStream, getFollowUpStream, getGeneralStream } from './ai'
 import { state, setPageChangeHandler, inModePage } from './state'
 import { settings, getModeProfile, onSettingsChanged } from './settings'
-import { getTranscriptionText, clearTranscriptionText } from './transcription'
+import {
+  getTranscriptionText,
+  clearTranscriptionText,
+  onTranscriptionStart,
+  onTranscriptionError,
+  onTranscriptionEnd
+} from './transcription'
 import { consumeStream, extractErrorMessage, isImageInputRefused } from './stream'
 import type { StreamChunk } from './stream'
 import { requestHint, stopHints, clearConversation } from './conversation'
@@ -523,6 +529,26 @@ setPageChangeHandler(() => {
     updateMiniBarState({ mode: state.inConversationPage ? 'conversation' : 'screenshot' })
   }
 })
+
+// The microphone buttons of the toolbar and the 极简悬浮条 follow recognition,
+// whichever page or shortcut started or stopped it. An error is always
+// reported before the end it causes
+onTranscriptionStart((purpose) => {
+  setListenState(purpose, false)
+})
+onTranscriptionError(() => {
+  state.listenFailed = true
+})
+onTranscriptionEnd(() => {
+  setListenState(null, state.listenFailed)
+})
+
+function setListenState(listening: typeof state.listening, failed: boolean): void {
+  state.listening = listening
+  state.listenFailed = failed
+  broadcastAppState()
+  updateMiniBarState({ listening: listening === 'conversation', listenFailed: failed })
+}
 
 /**
  * When the current request started, or null when none is running.

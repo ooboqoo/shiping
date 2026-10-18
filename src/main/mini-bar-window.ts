@@ -10,6 +10,8 @@ export interface MiniBarState {
   mode: AppMode
   /** 对话模式 is listening to the other side */
   listening: boolean
+  /** Listening ended by itself on an error, not by the user; cleared when it starts again */
+  listenFailed: boolean
 }
 
 /** The grip and five buttons of `.overlay-toolbar`: 14px + 5 × 28px, 2px gaps, 8px padding each side */
@@ -26,15 +28,15 @@ let miniBarOpacity = DEFAULT_OPACITY
 /** Where the user left it this session; null until it is first shown */
 let miniBarPosition: [number, number] | null = null
 let topMostGuard: ReturnType<typeof setInterval> | null = null
-const miniBarState: MiniBarState = { mode: 'screenshot', listening: false }
+const miniBarState: MiniBarState = { mode: 'screenshot', listening: false, listenFailed: false }
 
 // The bar's renderer loads once and asks; every change after that is pushed
 ipcMain.handle('mini-bar:get-state', () => miniBarState)
 
 export function updateMiniBarState(next: Partial<MiniBarState>): void {
-  const before = { ...miniBarState }
+  const keys = Object.keys(next) as (keyof MiniBarState)[]
+  if (keys.every((key) => next[key] === miniBarState[key])) return
   Object.assign(miniBarState, next)
-  if (before.mode === miniBarState.mode && before.listening === miniBarState.listening) return
   sendToMiniBar('mini-bar-state', miniBarState)
 }
 

@@ -15,6 +15,7 @@ import {
   Lightbulb,
   Maximize2,
   Mic,
+  MicOff,
   Minimize2,
   MousePointer2,
   SquareDashedMousePointer,
@@ -115,13 +116,12 @@ export function shownToolbarActions(
 }
 
 /** Where the 极简悬浮条 says more than the toolbar's button does */
-const MINI_BAR_DISPLAY: Partial<Record<ToolbarActionName, { Icon?: LucideIcon; label: string }>> =
-  {
-    pageUp: { label: '向上翻页（手机同步翻页）' },
-    pageDown: { label: '向下翻页（手机同步翻页）' },
-    toggleTranscription: { label: '开始/停止监听对方说话（停止时图标带斜线）' },
-    toggleMiniBar: { Icon: Maximize2, label: '展开完整窗口' }
-  }
+const MINI_BAR_DISPLAY: Partial<Record<ToolbarActionName, { Icon?: LucideIcon; label: string }>> = {
+  pageUp: { label: '向上翻页（手机同步翻页）' },
+  pageDown: { label: '向下翻页（手机同步翻页）' },
+  toggleTranscription: { label: '开始/停止监听对方说话（监听中右上角有小圆点，停止时图标带斜线）' },
+  toggleMiniBar: { Icon: Maximize2, label: '展开完整窗口' }
+}
 
 function buildMiniBarActions(mode: AppMode): ToolbarAction[] {
   return MINI_BAR_LAYOUT[mode].map((action) => {
@@ -145,4 +145,18 @@ function buildMiniBarActions(mode: AppMode): ToolbarAction[] {
 export const MINI_BAR_ACTIONS: Record<AppMode, ToolbarAction[]> = {
   screenshot: buildMiniBarActions('screenshot'),
   conversation: buildMiniBarActions('conversation')
+}
+
+/**
+ * The microphone button of the toolbar and the 极简悬浮条. Kept quiet on
+ * purpose, to be read by the user and not catch anyone else's eye: a slash
+ * while not listening, a small dot while listening, a dim red dot when
+ * recognition ended on an error. No colour fills, no animation (main.css)
+ */
+export function micButton(
+  listening: boolean,
+  failed: boolean
+): { Icon: LucideIcon; className: string } {
+  if (listening) return { Icon: Mic, className: 'mic-listening' }
+  return { Icon: MicOff, className: failed ? 'mic-off mic-failed' : 'mic-off' }
 }

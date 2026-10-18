@@ -12,7 +12,6 @@ import {
   onTranscriptionStart
 } from './transcription'
 import { markMobileDirty, registerMobileSource } from './mobile-sync'
-import { updateMiniBarState } from './mini-bar-window'
 import {
   countMeaningfulChars,
   type ConversationSnapshot,
@@ -418,7 +417,6 @@ onConversationSentence(handleSentence)
 onTranscriptionStart((purpose) => {
   if (purpose !== 'conversation') return
   listenError = undefined
-  updateMiniBarState({ listening: true })
   markMobileDirty()
 })
 
@@ -430,7 +428,6 @@ onTranscriptionError((message) => {
 
 // Stopping mid-sentence keeps what was heard: the recogniser will not finish it now
 onTranscriptionEnd(() => {
-  updateMiniBarState({ listening: false })
   markMobileDirty()
   const open = openUtterance()
   if (!open) return

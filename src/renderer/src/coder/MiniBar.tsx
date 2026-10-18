@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { GripVertical, MicOff } from 'lucide-react'
-import { MINI_BAR_ACTIONS } from '@/lib/toolbar-actions'
+import { GripVertical } from 'lucide-react'
+import { MINI_BAR_ACTIONS, micButton } from '@/lib/toolbar-actions'
 import { useWindowDrag } from '@/lib/use-window-drag'
 import { applyTheme } from '@/lib/theme'
 import { ToolbarButton } from './OverlayToolbar'
@@ -16,9 +16,10 @@ type MiniBarState = Awaited<ReturnType<Window['api']['getMiniBarState']>>
  */
 export function MiniBar() {
   const [hoverDelay, setHoverDelay] = useState(0)
-  const [{ mode, listening }, setState] = useState<MiniBarState>({
+  const [{ mode, listening, listenFailed }, setState] = useState<MiniBarState>({
     mode: 'screenshot',
-    listening: false
+    listening: false,
+    listenFailed: false
   })
   const startDrag = useWindowDrag()
 
@@ -63,9 +64,10 @@ export function MiniBar() {
         <ToolbarButton
           key={action}
           action={action}
-          // The one state shown: recognition that stopped by itself is silent
-          Icon={action === 'toggleTranscription' && !listening ? MicOff : Icon}
           hoverDelay={hoverDelay}
+          {...(action === 'toggleTranscription'
+            ? micButton(listening, listenFailed)
+            : { Icon, className: undefined })}
         />
       ))}
     </div>
