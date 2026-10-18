@@ -284,12 +284,13 @@ const COMMANDS = {
     })
     app.process().stdout.on('data', (d) => log.write(d))
     app.process().stderr.on('data', (d) => log.write(d))
-    // Two windows: the main one and the overlay toolbar (`index.html#toolbar`)
+    // Three windows: the main one, the overlay toolbar (`index.html#/toolbar`)
+    // and the 极简悬浮条 (`index.html#/mini-bar`)
     const deadline = Date.now() + 20_000
     while (!page && Date.now() < deadline) {
       page = app
         .windows()
-        .find((w) => w.url().includes('index.html') && !w.url().includes('toolbar'))
+        .find((w) => w.url().includes('index.html') && !/#\/(toolbar|mini-bar)/.test(w.url()))
       if (!page) await sleep(300)
     }
     if (!page) throw new Error('main window never appeared; see ' + LOG_FILE)
@@ -695,6 +696,17 @@ const COMMANDS = {
     return JSON.stringify(await page.evaluate(expr))
   },
 
+  /** `meval <js>`: evaluate in the main process; `electron` (the module) is in scope */
+  async meval(expr) {
+    if (!app) throw new Error('launch first')
+    return JSON.stringify(
+      await app.evaluate(
+        (electron, src) => new Function('electron', `return (${src})`)(electron),
+        expr
+      )
+    )
+  },
+
   async text(sel) {
     need()
     return page.evaluate(
@@ -703,12 +715,31 @@ const COMMANDS = {
     )
   },
 
+  /** Every window's route, whether it is on screen, its opacity and bounds */
   async windows() {
     if (!app) throw new Error('launch first')
-    return app
-      .windows()
-      .map((w) => w.url())
-      .join('\n')
+    return app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .map((w) =>
+          [
+            w.webContents.getURL().split('#')[1] ?? '/',
+            `visible=${w.isVisible()}`,
+            `opacity=${w.getOpacity()}`,
+            JSON.stringify(w.getBounds())
+          ].join(' ')
+        )
+        .join('\n')
+    )
+  },
+
+  /** `ssw <url part>`: screenshot of another window, e.g. `mini-bar` or `toolbar` */
+  async ssw(part) {
+    need()
+    const win = app.windows().find((w) => w.url().includes(part))
+    if (!win) throw new Error(`no window with ${part} in its URL`)
+    const f = path.join(SHOT_DIR, `${part.replace(/\W+/g, '-')}-${Date.now()}.png`)
+    await win.screenshot({ path: f })
+    return f
   },
 
   /** Close the app, delete its userData (it holds the API keys in plain text), exit */
