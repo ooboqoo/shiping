@@ -1,6 +1,6 @@
 import { app, ipcMain } from 'electron'
 import type { ModelMessage } from 'ai'
-import { getHintStream } from './ai'
+import { getHintStream, getMemoStream, getPrewarmStream } from './ai'
 import { settings, getModeProfile, onSettingsChanged } from './settings'
 import { saveConversation, saveConversationSync } from './save-conversation'
 import { consumeStream, extractErrorMessage } from './stream'
@@ -57,6 +57,44 @@ const CONTEXT_HINTS = 2
 const CONTEXT_HINT_CHARS = 160
 
 /**
+ * A rolling memo of the call keeps what the context window has let go of: what
+ * was asked, what the other side told about themselves, what the hints have
+ * claimed. The same model folds sentences into it a few at a time, off the
+ * hints' path. The latest ones (`MEMO_KEEP` sentences / `MEMO_KEEP_CHARS`,
+ * whichever runs out first) stay out: their hints may still be rewritten, and
+ * the context window has them word for word.
+ */
+const MEMO_KEEP = 8
+const MEMO_KEEP_CHARS = 600
+/** Sentences gather until there are this many, or this many characters, before a fold */
+const MEMO_BATCH = 4
+const MEMO_BATCH_CHARS = 300
+const MEMO_CHARS = 800
+const MEMO_HINT_CHARS = 300
+/** After a failed fold; the sentences wait meanwhile, still within the context window */
+const MEMO_RETRY = 30_000
+const MEMO_SYSTEM = [
+  '你在为一位正在通话（多为面试）的用户维护对话备忘。把【新的一段对话】合并进【当前备忘】，输出更新后的完整备忘。',
+  '「对方」是通话另一方说的话；「提示」是给用户的回答建议，用户大致会照着说。',
+  '固定四节，没有内容的节写「无」：',
+  '【对方问过的问题】每题一行，最新的在最后',
+  '【对方透露的信息】公司、岗位、团队、项目、要求等',
+  '【已给出的说法】提示里说过的经历、数字、立场，后面的提示不能与之矛盾',
+  '【对方关注点】从提问推断',
+  `合并去重，不超过 ${MEMO_CHARS - 100} 字，超长时先删最早的问题。只输出备忘本身，不要解释。`
+].join('\n')
+
+/**
+ * While listening, the system prompt is sent again after this long without a
+ * request, before the platform's cache of it runs cold (OpenAI keeps it 5-10
+ * minutes)
+ */
+const PREWARM_IDLE = 4 * 60_000
+const PREWARM_CHECK = 60_000
+/** A prewarm that has not answered by then is given up */
+const PREWARM_TIMEOUT = 30_000
+
+/**
  * A question still being spoken whose text stopped changing for this long gets
  * its hint before the recogniser ends the sentence (`conversationSilenceMs`,
  * 0.8s by default): the other side has most likely finished asking.
@@ -87,6 +125,17 @@ let saveTimer: NodeJS.Timeout | null = null
 let listenError: string | undefined
 /** The last save failed and the user was told; not again until one succeeds */
 let saveFailed = false
+
+let memo = ''
+/** The last utterance folded into `memo` */
+let memoUpTo = 0
+/** The fold being written; a clear drops it */
+let memoController: AbortController | null = null
+let memoRetryAt = 0
+
+/** When 对话模式 last sent its system prompt, with a hint or a prewarm */
+let lastRequestAt = 0
+let keepWarmTimer: NodeJS.Timeout | null = null
 
 interface HintStream {
   controller: AbortController
@@ -209,6 +258,7 @@ function handleSentence(text: string, final: boolean) {
 
   if (final) {
     onSentenceFinished(utterance)
+    void updateMemo()
   } else {
     onSentenceGrowing(utterance)
     scheduleEarlyHint(utterance)
@@ -323,21 +373,126 @@ function createCard(fromId: number, toId: number): HintCard {
   return card
 }
 
+function cut(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
+/** A hint worth remembering: finished, and with something to say */
+function answered(card: HintCard): boolean {
+  return card.status === 'done' && !!card.text.trim() && !card.text.includes(NO_REPLY)
+}
+
 /** The latest hints written for earlier sentences, each cut to its start (the opening line comes first) */
 function recentHints(fromId: number): string[] {
   return hints
-    .filter(
-      (card) =>
-        card.toId < fromId &&
-        card.status === 'done' &&
-        card.text.trim() &&
-        !card.text.includes(NO_REPLY)
-    )
+    .filter((card) => card.toId < fromId && answered(card))
     .slice(-CONTEXT_HINTS)
-    .map((card) => {
-      const text = card.text.trim()
-      return text.length > CONTEXT_HINT_CHARS ? `${text.slice(0, CONTEXT_HINT_CHARS)}…` : text
-    })
+    .map((card) => cut(card.text.trim(), CONTEXT_HINT_CHARS))
+}
+
+/** The last sentence the memo may take in: all but the latest few, and never part of a card */
+function memoBoundary(): number {
+  let upTo = 0
+  let kept = 0
+  let keptChars = 0
+  for (let i = utterances.length - 1; i >= 0; i--) {
+    if (kept >= MEMO_KEEP || keptChars >= MEMO_KEEP_CHARS) {
+      upTo = utterances[i].id
+      break
+    }
+    kept++
+    keptChars += utterances[i].text.length
+  }
+  // A card goes in with all its sentences once it is settled, or not yet
+  for (const card of [...hints].reverse()) {
+    const unsettled = card.status === 'streaming' || card.status === 'waiting'
+    if (card.fromId <= upTo && (card.toId > upTo || unsettled)) upTo = card.fromId - 1
+  }
+  return upTo
+}
+
+/** Sentences after the memo up to `upTo`, each followed by the hint written for it */
+function memoTranscript(upTo: number): string {
+  const lines: string[] = []
+  for (const utterance of utterances) {
+    if (utterance.id <= memoUpTo || utterance.id > upTo || !utterance.text.trim()) continue
+    lines.push(`对方：${utterance.text.trim()}`)
+    for (const card of hints) {
+      if (card.toId === utterance.id && answered(card)) {
+        lines.push(`提示：${cut(card.text.trim(), MEMO_HINT_CHARS)}`)
+      }
+    }
+  }
+  return lines.join('\n')
+}
+
+/** Fold the sentences the context window is about to let go of into the memo */
+async function updateMemo(): Promise<void> {
+  if (memoController || Date.now() < memoRetryAt) return
+  if (!getModeProfile('conversation').apiKey) return
+  const upTo = memoBoundary()
+  const fresh = utterances.filter((u) => u.id > memoUpTo && u.id <= upTo && u.text.trim())
+  const freshChars = fresh.reduce((sum, u) => sum + u.text.length, 0)
+  if (fresh.length < MEMO_BATCH && freshChars < MEMO_BATCH_CHARS) return
+
+  const controller = new AbortController()
+  memoController = controller
+  const prompt = `【当前备忘】\n${memo || '（空）'}\n\n【新的一段对话】\n${memoTranscript(upTo)}`
+  const outcome = await consumeStream(
+    (signal) => getMemoStream(MEMO_SYSTEM, prompt, signal),
+    controller,
+    () => {}
+  )
+  // The conversation was cleared meanwhile
+  if (memoController !== controller) return
+  memoController = null
+  const text = outcome.text.trim()
+  if (outcome.status !== 'complete' || !text) {
+    if (outcome.status === 'failed') {
+      console.error('Error updating the conversation memo:', outcome.error)
+    }
+    memoRetryAt = Date.now() + MEMO_RETRY
+    return
+  }
+  memo = cut(text, MEMO_CHARS)
+  memoUpTo = upTo
+  // More may have fallen behind while this one was written
+  void updateMemo()
+}
+
+function resetMemo() {
+  memoController?.abort()
+  memoController = null
+  memo = ''
+  memoUpTo = 0
+  memoRetryAt = 0
+}
+
+/**
+ * Send the system prompt ahead of the next hint (see `getPrewarmStream`), cut
+ * off at its first chunk. Failures stay silent: the hint itself will tell.
+ */
+function prewarm() {
+  if (!getModeProfile('conversation').apiKey) return
+  lastRequestAt = Date.now()
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), PREWARM_TIMEOUT)
+  void consumeStream(getPrewarmStream, controller, () => controller.abort()).then((outcome) => {
+    if (outcome.status === 'failed') console.error('Error prewarming:', outcome.error)
+  })
+}
+
+function startKeepWarm() {
+  stopKeepWarm()
+  prewarm()
+  keepWarmTimer = setInterval(() => {
+    if (Date.now() - lastRequestAt >= PREWARM_IDLE) prewarm()
+  }, PREWARM_CHECK)
+}
+
+function stopKeepWarm() {
+  if (keepWarmTimer) clearInterval(keepWarmTimer)
+  keepWarmTimer = null
 }
 
 /**
@@ -367,6 +522,9 @@ function buildMessages(
   const given = recentHints(fromId)
 
   const parts: string[] = []
+  if (memo && fromId > memoUpTo) {
+    parts.push(`【更早对话的备忘】（前面对话的摘要，提示要与其中的说法保持一致）\n${memo}`)
+  }
   if (context.length > 0) parts.push(`【之前对方说过的话】\n${context.join('\n')}`)
   if (given.length > 0) {
     parts.push(
@@ -433,6 +591,7 @@ async function startHint(
   generations.set(card.id, generation)
   const stream: HintStream = { controller: new AbortController(), startedAt: Date.now() }
   streams.set(card.id, stream)
+  lastRequestAt = stream.startedAt
   const messages = buildMessages(fromId, toId, previous, early)
   const query = hintQuery(fromId, toId)
   const outcome = await consumeStream(
@@ -516,6 +675,7 @@ export function clearConversation(): void {
   for (const id of [...streams.keys()]) stopStream(id)
   cancelEarlyHint()
   earlyStarts.clear()
+  resetMemo()
   // The last changes still go into this conversation's file; the next one gets its own
   if (saveTimer) saveNow()
   utterances = []
@@ -562,6 +722,7 @@ onTranscriptionStart((purpose) => {
   if (purpose !== 'conversation') return
   listenError = undefined
   markMobileDirty()
+  startKeepWarm()
 })
 
 onTranscriptionError((message) => {
@@ -573,6 +734,7 @@ onTranscriptionError((message) => {
 // Stopping mid-sentence keeps what was heard: the recogniser will not finish it now
 onTranscriptionEnd(() => {
   cancelEarlyHint()
+  stopKeepWarm()
   markMobileDirty()
   const open = openUtterance()
   if (!open) return

@@ -91,7 +91,11 @@ async function* streamWith(
   mode: AppMode,
   messages: ModelMessage[],
   abortSignal: AbortSignal | undefined,
-  { query, extraSystem }: { query?: string; extraSystem?: string } = {}
+  {
+    query,
+    extraSystem,
+    system = getSystemPrompt(mode, extraSystem)
+  }: { query?: string; extraSystem?: string; system?: string } = {}
 ): AsyncIterable<StreamChunk> {
   const reference = await getExternalReference(mode, query, abortSignal)
   const profile = getModeProfile(mode)
@@ -99,7 +103,7 @@ async function* streamWith(
 
   const { fullStream } = streamText({
     model: openai.chatModel(getModel(profile)),
-    system: getSystemPrompt(mode, extraSystem),
+    system,
     messages: withReference(messages, reference),
     abortSignal,
     onError: (err) => {
@@ -157,4 +161,19 @@ export function getGeneralStream(
  */
 export function getHintStream(messages: ModelMessage[], abortSignal?: AbortSignal, query?: string) {
   return streamWith('conversation', messages, abortSignal, { query })
+}
+
+/**
+ * 对话模式's system prompt sent ahead of the hints, so the platform has it
+ * cached (资料库 first, then the scene: the bytes every hint starts with) and
+ * the first hint of a call prefills faster. The caller cuts it off at the
+ * first chunk; nothing it says is used.
+ */
+export function getPrewarmStream(abortSignal?: AbortSignal) {
+  return streamWith('conversation', [{ role: 'user', content: '好' }], abortSignal)
+}
+
+/** 对话模式's rolling memo (conversation.ts): its own instructions, without 资料库 or scene */
+export function getMemoStream(system: string, prompt: string, abortSignal?: AbortSignal) {
+  return streamWith('conversation', [{ role: 'user', content: prompt }], abortSignal, { system })
 }
