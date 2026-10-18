@@ -8,10 +8,25 @@ import {
   setToolbarWanted,
   reassertToolbarTopMost,
   sendToToolbar,
-  setToolbarWidth
+  setToolbarWidth,
+  setToolbarSuppressed
 } from './toolbar-window'
-import { TOOLBAR_LAYOUT, toolbarActions, toolbarWidth } from '../shared/toolbar'
+import {
+  MINI_BAR_LAYOUT,
+  TOOLBAR_LAYOUT,
+  toolbarActions,
+  toolbarWidth,
+  type ToolbarActionName
+} from '../shared/toolbar'
 import type { AppMode } from '../shared/api-profile'
+import {
+  showMiniBar,
+  hideMiniBar,
+  isMiniBarVisible,
+  miniBarModeOf,
+  moveMiniBar,
+  updateMiniBarState
+} from './mini-bar-window'
 import { takeScreenshot } from './take-screenshot'
 import { pickCaptureRegion, pickScreenshot } from './region-picker'
 import type { CaptureRegion } from '../shared/capture-region'
@@ -287,6 +302,10 @@ function showMainWindow(window: BrowserWindow) {
 
 /** Undo `hideOrShowMainWindow`'s hiding, whichever way it hid the window */
 export function revealMainWindow(window: BrowserWindow) {
+  if (isMiniBarOn) {
+    exitMiniBar(window)
+    return
+  }
   if (isWindowSoftHidden) restoreSoftHiddenWindow(window)
   else if (!window.isVisible()) showMainWindow(window)
 }
@@ -326,6 +345,57 @@ function keepWindowInFront(window: BrowserWindow) {
 
   // Ensure background guard is running for persistent protection
   startBackgroundGuard(window)
+}
+
+/**
+ * 极简悬浮条: the answer is read on a phone (手机同步), so the main window and
+ * the toolbar go out of sight and only the screenshot buttons stay on screen.
+ * The main window keeps 截图模式's page, which the screenshot actions need.
+ */
+let isMiniBarOn = false
+
+function enterMiniBar(mainWindow: BrowserWindow) {
+  if (isMiniBarOn) return
+  setSnipSession(false)
+  const hadFocus = mainWindow.isFocused()
+  isMiniBarOn = true
+  // First shown where the main window was, which is where the user is looking
+  showMiniBar(softHiddenPosition ?? (mainWindow.getPosition() as [number, number]))
+  setToolbarSuppressed(true)
+  if (process.platform === 'win32') {
+    softHideWindow(mainWindow)
+  } else {
+    stopBackgroundGuard()
+    mainWindow.hide()
+  }
+  // The bar acts on the mode page it was folded from, and keeps 对话模式
+  // listening; only from the settings or help page does it need one
+  if (!inModePage()) mainWindow.webContents.send('mini-bar-entered')
+  returnFocus(mainWindow, hadFocus)
+  syncShortcuts()
+}
+
+/** The 极简悬浮条 stands in for the hidden main window, so it is the one moved */
+function moveMainWindowBy(dx: number, dy: number) {
+  if (isMiniBarOn) {
+    moveMiniBar(dx, dy)
+    return
+  }
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const [x, y] = mainWindow.getPosition()
+  mainWindow.setPosition(x + dx, y + dy)
+}
+
+function exitMiniBar(mainWindow: BrowserWindow) {
+  if (!isMiniBarOn) return
+  isMiniBarOn = false
+  hideMiniBar()
+  setToolbarSuppressed(false)
+  // Back even if it had been hidden before the bar came up: the user asked for it
+  if (isWindowSoftHidden) restoreSoftHiddenWindow(mainWindow)
+  if (!mainWindow.isVisible()) showMainWindow(mainWindow)
+  syncShortcuts()
 }
 
 /**
@@ -448,6 +518,10 @@ setPageChangeHandler(() => {
   markMobileDirty()
   // The page decides which actions have anything to do
   syncShortcuts()
+  // So does the 极简悬浮条, which keeps the last mode on the settings / help page
+  if (inModePage()) {
+    updateMiniBarState({ mode: state.inConversationPage ? 'conversation' : 'screenshot' })
+  }
 })
 
 /**
@@ -486,10 +560,15 @@ function reportDuration() {
 async function whilePicking<T>(mainWindow: BrowserWindow, pick: () => Promise<T>): Promise<T> {
   const wasHidden = isWindowSoftHidden
   softHideWindow(mainWindow)
+  const miniBarShown = isMiniBarVisible()
+  hideMiniBar()
+  syncShortcuts()
   try {
     return await pick()
   } finally {
     if (!wasHidden) restoreSoftHiddenWindow(mainWindow)
+    if (miniBarShown && isMiniBarOn) showMiniBar()
+    syncShortcuts()
   }
 }
 
@@ -582,7 +661,8 @@ async function runAnswer(
 /** Ask the renderer to show the other mode; it owns the routes */
 function switchMode() {
   const mainWindow = global.mainWindow
-  if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+  // The 极简悬浮条's buttons are 截图模式's only
+  if (!mainWindow || mainWindow.isDestroyed() || !inModePage() || isMiniBarOn) return
   mainWindow.webContents.send('switch-mode')
 }
 
@@ -763,6 +843,14 @@ const callbacks: Record<string, () => void> = {
   hideOrShowMainWindow: async () => {
     const mainWindow = global.mainWindow
     if (!mainWindow || mainWindow.isDestroyed()) return
+
+    // The 极简悬浮条 is all there is on screen then, so it is what hides
+    if (isMiniBarOn) {
+      if (isMiniBarVisible()) hideMiniBar()
+      else showMiniBar()
+      syncShortcuts()
+      return
+    }
 
     if (process.platform === 'win32') {
       if (isWindowSoftHidden) {
@@ -956,33 +1044,13 @@ const callbacks: Record<string, () => void> = {
     pageMobile(1)
   },
 
-  moveMainWindowUp: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x, y - MOVE_STEP)
-  },
+  moveMainWindowUp: () => moveMainWindowBy(0, -MOVE_STEP),
 
-  moveMainWindowDown: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x, y + MOVE_STEP)
-  },
+  moveMainWindowDown: () => moveMainWindowBy(0, MOVE_STEP),
 
-  moveMainWindowLeft: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x - MOVE_STEP, y)
-  },
+  moveMainWindowLeft: () => moveMainWindowBy(-MOVE_STEP, 0),
 
-  moveMainWindowRight: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x + MOVE_STEP, y)
-  },
+  moveMainWindowRight: () => moveMainWindowBy(MOVE_STEP, 0),
 
   toggleTranscription: () => {
     const mainWindow = global.mainWindow
@@ -1017,6 +1085,14 @@ const callbacks: Record<string, () => void> = {
 
   switchMode,
 
+  // From any page: the main window shows 截图模式's page when it comes back
+  toggleMiniBar: () => {
+    const mainWindow = global.mainWindow
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (isMiniBarOn) exitMiniBar(mainWindow)
+    else enterMiniBar(mainWindow)
+  },
+
   // Works on every page: it only sets up future screenshots
   pickCaptureRegion: () => {
     void pickRegion()
@@ -1049,6 +1125,7 @@ const SHORTCUT_SCOPES: Record<
   { page: ShortcutPage; hidden?: true; window?: true; voice?: true }
 > = {
   hideOrShowMainWindow: { page: 'any', hidden: true },
+  toggleMiniBar: { page: 'any', hidden: true },
   switchMode: { page: 'mode' },
   ignoreOrEnableMouse: { page: 'any', window: true },
   increaseOpacity: { page: 'mode', window: true },
@@ -1099,7 +1176,8 @@ function isShortcutLive(action: string): boolean {
   if (recordingShortcut && state.inSettingsPage) return false
   if (scope.voice && !settings.dashscopeApiKey) return false
   if (!onShortcutPage(scope.page)) return false
-  if (scope.hidden || isMainWindowShown()) return true
+  if (isMiniBarOn && action === 'switchMode') return false
+  if (scope.hidden || isMainWindowShown() || isMiniBarVisible()) return true
   return !scope.window && hasMobileViewers()
 }
 
@@ -1239,8 +1317,12 @@ ipcMain.handle('stopSolutionStream', () => stopAnswer())
  * this mode keeps off the toolbar (对话模式's clearTranscription wipes the
  * conversation). Whether the user has turned the button on is the toolbar's affair
  */
-ipcMain.handle('triggerAction', (_event, action: string) => {
-  const offered = TOOLBAR_LAYOUT[toolbarMode()].some((slot) => slot.action === action)
+ipcMain.handle('triggerAction', (event, action: string) => {
+  // The 极简悬浮条 has buttons of its own, for the mode it shows
+  const miniBarMode = miniBarModeOf(event.sender)
+  const offered = miniBarMode
+    ? MINI_BAR_LAYOUT[miniBarMode].includes(action as ToolbarActionName)
+    : TOOLBAR_LAYOUT[toolbarMode()].some((slot) => slot.action === action)
   if (!offered) return false
   callbacks[action]?.()
   return true

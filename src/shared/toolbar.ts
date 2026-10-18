@@ -23,6 +23,7 @@ export type ToolbarActionName =
   | 'generateHint'
   | 'toggleHintMode'
   | 'switchMode'
+  | 'toggleMiniBar'
 
 /**
  * The buttons the user turned on or off, per mode. One left out keeps its
@@ -67,6 +68,7 @@ export const TOOLBAR_LAYOUT: Record<AppMode, readonly ToolbarSlot[]> = {
     off('snipAppendScreenshot'),
     on('pickCaptureRegion'),
     on('stopSolutionStream'),
+    on('toggleMiniBar'),
     ...COMMON_SLOTS,
     on('toggleTranscription'),
     off('clearTranscription'),
@@ -78,10 +80,22 @@ export const TOOLBAR_LAYOUT: Record<AppMode, readonly ToolbarSlot[]> = {
     on('toggleHintMode'),
     on('stopSolutionStream'),
     on('toggleTranscription'),
+    on('toggleMiniBar'),
     ...COMMON_SLOTS,
     on('cycleScene'),
     on('switchMode')
   ]
+}
+
+/**
+ * The 极简悬浮条's buttons per mode, after its drag grip, fixed (not the user's
+ * pick). It stands in for the main window while the answer or the hints are
+ * read on a phone (手机同步), so it keeps what starts them, paging (which pages
+ * the phones too) and the way back. Main accepts a click from the bar only on these
+ */
+export const MINI_BAR_LAYOUT: Record<AppMode, readonly ToolbarActionName[]> = {
+  screenshot: ['takeScreenshot', 'appendScreenshot', 'pageUp', 'pageDown', 'toggleMiniBar'],
+  conversation: ['generateHint', 'toggleTranscription', 'pageUp', 'pageDown', 'toggleMiniBar']
 }
 
 export const createToolbarButtons = (): ToolbarButtons => ({ screenshot: {}, conversation: {} })

@@ -330,6 +330,14 @@ main {
   color: var(--warn);
 }
 
+.chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
 .spinner {
   width: 10px;
   height: 10px;

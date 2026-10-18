@@ -4,8 +4,15 @@ import { getHintStream } from './ai'
 import { settings, getModeProfile, onSettingsChanged } from './settings'
 import { saveConversation, saveConversationSync } from './save-conversation'
 import { consumeStream, extractErrorMessage } from './stream'
-import { isTranscriptionRunning, onConversationSentence, onTranscriptionEnd } from './transcription'
+import {
+  isTranscriptionRunning,
+  onConversationSentence,
+  onTranscriptionEnd,
+  onTranscriptionError,
+  onTranscriptionStart
+} from './transcription'
 import { markMobileDirty, registerMobileSource } from './mobile-sync'
+import { updateMiniBarState } from './mini-bar-window'
 import {
   countMeaningfulChars,
   type ConversationSnapshot,
@@ -55,6 +62,8 @@ let hintedUpTo = 0
 /** When the first sentence was heard; the saved record is named after it */
 let startedAt = 0
 let saveTimer: NodeJS.Timeout | null = null
+/** Why recognition last failed while listening; cleared when it starts again */
+let listenError: string | undefined
 /** The last save failed and the user was told; not again until one succeeds */
 let saveFailed = false
 
@@ -398,14 +407,31 @@ registerMobileSource('conversation', () => {
       status,
       text,
       error
-    }))
+    })),
+    listening: isTranscriptionRunning('conversation'),
+    listenError
   }
 })
 
 onConversationSentence(handleSentence)
 
+onTranscriptionStart((purpose) => {
+  if (purpose !== 'conversation') return
+  listenError = undefined
+  updateMiniBarState({ listening: true })
+  markMobileDirty()
+})
+
+onTranscriptionError((message) => {
+  if (!isTranscriptionRunning('conversation')) return
+  listenError = message
+  markMobileDirty()
+})
+
 // Stopping mid-sentence keeps what was heard: the recogniser will not finish it now
 onTranscriptionEnd(() => {
+  updateMiniBarState({ listening: false })
+  markMobileDirty()
   const open = openUtterance()
   if (!open) return
   open.final = true

@@ -26,6 +26,7 @@ export interface SnipQuestion {
   image: string
   append: boolean
 }
+import type { MiniBarState } from '../main/mini-bar-window'
 
 // Custom APIs for renderer
 const api = {
@@ -70,8 +71,9 @@ const api = {
     ipcRenderer.removeAllListeners('external-knowledge-error')
   },
 
-  // Resize transparent frameless windows without toggling Electron's native resizable style
-  startWindowResize: (direction: 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw') =>
+  // Resize transparent frameless windows without toggling Electron's native resizable style;
+  // `move` drags the whole window (the 极简悬浮条's grip)
+  startWindowResize: (direction: 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw' | 'move') =>
     ipcRenderer.send('window-resize-start', direction),
   stopWindowResize: () => ipcRenderer.send('window-resize-stop'),
 
@@ -186,6 +188,22 @@ const api = {
   // Send the held screenshot with the question (empty: as 框选识别 would), or drop it
   sendSnipQuestion: (question: string) => ipcRenderer.invoke('sendSnipQuestion', question),
   cancelSnipQuestion: () => ipcRenderer.invoke('cancelSnipQuestion'),
+  // The 极简悬浮条 came up over the settings / help page: its buttons need a mode page behind them
+  onMiniBarEntered: (callback: () => void) => {
+    ipcRenderer.on('mini-bar-entered', () => callback())
+  },
+  removeMiniBarEnteredListener: () => {
+    ipcRenderer.removeAllListeners('mini-bar-entered')
+  },
+
+  // The 极简悬浮条's own window: which mode's buttons, and whether 对话模式 is listening
+  getMiniBarState: (): Promise<MiniBarState> => ipcRenderer.invoke('mini-bar:get-state'),
+  onMiniBarState: (callback: (state: MiniBarState) => void) => {
+    ipcRenderer.on('mini-bar-state', (_event, state: MiniBarState) => callback(state))
+  },
+  removeMiniBarStateListener: () => {
+    ipcRenderer.removeAllListeners('mini-bar-state')
+  },
 
   // A screenshot was refused because this profile's model takes no images
   onVisionUnsupported: (callback: (profileId: string) => void) => {

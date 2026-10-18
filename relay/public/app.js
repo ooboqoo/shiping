@@ -35,6 +35,8 @@
   const answerMetaEl = $('answer-meta')
   const answerErrorEl = $('answer-error')
   const hintsEl = $('hints')
+  const listenMetaEl = $('listen-meta')
+  const listenErrorEl = $('listen-error')
   const jumpEl = $('jump')
   const toastEl = $('toast')
   const tabs = [...document.querySelectorAll('[data-tab]')]
@@ -373,6 +375,7 @@
   }
 
   function renderConversation(conversation) {
+    renderListening(conversation)
     const utterances = conversation?.utterances || []
     const hints = conversation?.hints || []
     if (utterances.length === 0 && hints.length === 0) {
@@ -391,6 +394,20 @@
     })
     if (pending.length > 0) html.push(`<div class="turn">${renderSaid(pending)}</div>`)
     replaceHtml(hintsEl, html.join(''))
+  }
+
+  // Whether the app hears the other side; absent from an app older than this page
+  function renderListening(conversation) {
+    const listening = conversation?.listening
+    listenMetaEl.innerHTML =
+      listening === undefined
+        ? ''
+        : listening
+          ? '<span class="chip done"><i class="dot"></i>监听中</span>'
+          : '<span class="chip">未在监听</span>'
+    const error = !listening && conversation?.listenError
+    listenErrorEl.hidden = !error
+    listenErrorEl.textContent = error ? `监听出错：${error}` : ''
   }
 
   const maxScroll = () => root.scrollHeight - innerHeight

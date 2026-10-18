@@ -72,7 +72,7 @@ export function OverlayToolbar() {
  * ahead of it — and therefore never a click. Moves are untouched, which is why
  * hover dwell has always worked there.
  */
-function ToolbarButton({
+export function ToolbarButton({
   action,
   Icon,
   hoverDelay

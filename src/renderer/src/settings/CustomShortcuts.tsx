@@ -109,6 +109,11 @@ export function CustomShortcuts() {
             shortcut="switchMode"
           />
           <Shortcut
+            label="极简悬浮条"
+            description="收起为只有几个按钮的悬浮条，解答和提示在手机上看；再按一次展开"
+            shortcut="toggleMiniBar"
+          />
+          <Shortcut
             label="鼠标穿透"
             description="启用后窗口对鼠标穿透，可以点击窗口背后的内容"
             shortcut="ignoreOrEnableMouse"

@@ -1,8 +1,9 @@
 import './assets/main.css'
 
-import { StrictMode } from 'react'
+import { StrictMode, type ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { MiniBar } from './coder/MiniBar'
 import { useSettingsStore } from './lib/store/settings'
 import { applyTheme } from './lib/theme'
 
@@ -18,8 +19,11 @@ if (!window.location.hash || window.location.hash === '#/') {
   if (lastMode === 'conversation') window.location.hash = '#/conversation'
 }
 
+// The mini bar owns its settings sync and must not run App.
+const Root: ComponentType = window.location.hash === '#/mini-bar' ? MiniBar : App
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <Root />
   </StrictMode>
 )

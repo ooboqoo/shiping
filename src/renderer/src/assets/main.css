@@ -84,6 +84,15 @@
   color: var(--app-hover-fg);
 }
 
+/* The 极简悬浮条's drag grip. No grab cursor: the pointer is visible on a
+   shared screen even where the window is not (see `.window-resize-handle`) */
+.mini-bar-grip {
+  @apply flex h-7 w-3.5 shrink-0 cursor-default items-center justify-center opacity-50;
+}
+.mini-bar-grip svg {
+  @apply size-3.5;
+}
+
 /* Fills up over the dwell time, so hover-to-trigger is visible before it fires */
 .dwell-progress {
   @apply pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left;

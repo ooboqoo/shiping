@@ -98,7 +98,7 @@ function buildState(): MobileState {
     mode: lastMode,
     paging,
     screenshot: { ...screenshot, text: tailForPhone(screenshot.text) },
-    conversation: sources.conversation?.() ?? { utterances: [], hints: [] }
+    conversation: sources.conversation?.() ?? { utterances: [], hints: [], listening: false }
   }
 }
 
