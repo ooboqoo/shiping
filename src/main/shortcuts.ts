@@ -1,4 +1,4 @@
-import { globalShortcut, ipcMain, screen } from 'electron'
+import { app, globalShortcut, ipcMain, screen } from 'electron'
 import type { BrowserWindow } from 'electron'
 import type { ModelMessage } from 'ai'
 import { applyContentProtection } from './window-privacy'
@@ -117,6 +117,37 @@ let frontReassertTimer: NodeJS.Timeout | null = null
 let backgroundGuardTimer: NodeJS.Timeout | null = null
 let isWindowSoftHidden = false
 let softHiddenPosition: [number, number] | null = null
+
+/**
+ * The window is up because 框选识别 showed its answer, and still has the
+ * keyboard. The pick took it from the app the user was in, so the window keeps
+ * it: Esc hides the window (the page shows it as Esc 隐藏窗口), and hiding
+ * hands the keyboard back. It ends the moment the window loses the keyboard or
+ * is hidden, so Esc never hides a window the user is not looking at. Any other
+ * way the window is shown keeps the overlay's rule of never taking focus, and
+ * leaves Esc alone
+ */
+let snipSession = false
+
+function setSnipSession(active: boolean): void {
+  if (snipSession === active) return
+  snipSession = active
+  const mainWindow = global.mainWindow
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('snip-session', active)
+}
+
+/**
+ * Give the keyboard back to the app the user was in, after hiding a window
+ * that had it (`hadFocus`, read before hiding: a hidden window is never
+ * focused). A window without it changes nothing: the app in front keeps it.
+ * macOS hands it back when the app hides, the window being hidden already;
+ * Windows only needs the focus taken off the window, now parked off-screen
+ */
+function returnFocus(window: BrowserWindow, hadFocus: boolean): void {
+  if (!hadFocus || window.isDestroyed()) return
+  if (process.platform === 'darwin') app.hide()
+  else window.blur()
+}
 
 /**
  * Reassert always-on-top. `aggressive` also calls moveTop() which
@@ -360,6 +391,8 @@ export function setIgnoreMouse(ignore: boolean): void {
 // Leaving or entering the settings page changes whether the stored preference
 // may be applied, so re-run it on every page change
 setPageChangeHandler(() => {
+  // Esc 隐藏窗口 lives on 截图模式's page; leaving it ends what it was offered for
+  setSnipSession(false)
   applyIgnoreMouse()
   broadcastAppState()
   // The phones follow the mode on screen
@@ -548,6 +581,32 @@ async function startScreenshotConversation(mainWindow: BrowserWindow, screenshot
   )
 }
 
+/**
+ * Hide the main window the way `hideOrShowMainWindow` does, from any of its
+ * entry points (shortcut, tray menu, the header's 隐藏 button, Esc after 框选识别)
+ */
+export function hideMainWindow(): void {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return
+  setSnipSession(false)
+  const hadFocus = mainWindow.isFocused()
+  if (process.platform === 'win32') {
+    softHideWindow(mainWindow)
+  } else {
+    stopBackgroundGuard()
+    mainWindow.hide()
+  }
+  returnFocus(mainWindow, hadFocus)
+}
+
+// The header's 隐藏 button, and Esc after 框选识别
+ipcMain.handle('hideMainWindow', () => hideMainWindow())
+
+/** End the 框选识别 session once the user moves on, see `snipSession` */
+export function watchMainWindowFocus(window: BrowserWindow): void {
+  window.on('blur', () => setSnipSession(false))
+}
+
 const callbacks: Record<string, () => void> = {
   hideOrShowMainWindow: async () => {
     const mainWindow = global.mainWindow
@@ -564,13 +623,12 @@ const callbacks: Record<string, () => void> = {
         return
       }
 
-      softHideWindow(mainWindow)
+      hideMainWindow()
       return
     }
 
     if (mainWindow.isVisible()) {
-      stopBackgroundGuard()
-      mainWindow.hide()
+      hideMainWindow()
     } else {
       // 重新显示时不断重申置顶属性，抵消其他前台软件持续抢占
       showMainWindow(mainWindow)
@@ -607,6 +665,9 @@ const callbacks: Record<string, () => void> = {
     const screenshotData = await whilePicking(mainWindow, pickScreenshot)
     if (!screenshotData || mainWindow.isDestroyed()) return
     revealMainWindow(mainWindow)
+    // The picker had the keyboard; the window takes it over, for Esc
+    mainWindow.focus()
+    setSnipSession(true)
     // The wait starts when the drag ends, not while the user is still picking
     startTiming()
     // A screenshot still being captured from before the drag ended loses to this one

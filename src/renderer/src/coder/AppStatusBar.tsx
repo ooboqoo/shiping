@@ -11,6 +11,16 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
+/** Whether the window is up for 框选识别's answer and holds the keyboard; main says when it ends */
+function useSnipSession(): boolean {
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    window.api.onSnipSession(setActive)
+    return () => window.api.removeSnipSessionListener()
+  }, [])
+  return active
+}
+
 export function AppStatusBar() {
   const {
     isLoading: isReceivingSolution,
@@ -25,6 +35,24 @@ export function AppStatusBar() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [questionInput, setQuestionInput] = useState('')
   const elapsed = useElapsed()
+  const snipSession = useSnipSession()
+  const hasActiveConversation = screenshotData && solutionChunks.length > 0
+  // Esc 隐藏窗口 is a hint after 新开对话, and Esc works exactly while it is shown: not
+  // while the answer streams, nor with the hints hidden, nor with the follow-up
+  // dialog open (Esc closes that instead)
+  const canDismiss =
+    snipSession && !!hasActiveConversation && !isReceivingSolution && !hideShortcutHints
+
+  useEffect(() => {
+    if (!canDismiss || isDialogOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return
+      e.preventDefault()
+      void window.api.hideMainWindow()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canDismiss, isDialogOpen])
 
   useEffect(() => {
     // Main measures the request and reports once, so nothing ticks here
@@ -65,9 +93,6 @@ export function AppStatusBar() {
       setIsLoading(false)
     }
   }
-
-  // Check if there's an active conversation
-  const hasActiveConversation = screenshotData && solutionChunks.length > 0
 
   return (
     <div className="absolute bottom-0 flex items-center justify-between w-full text-app-status-fg bg-app-status px-4 pb-1">
@@ -116,6 +141,15 @@ export function AppStatusBar() {
                   />
                   新开对话
                 </span>
+                {canDismiss && (
+                  <span>
+                    <ShortcutRenderer
+                      shortcut="Esc"
+                      className="inline-block scale-75 text-xs border border-current bg-transparent py-0 px-1"
+                    />
+                    隐藏窗口
+                  </span>
+                )}
               </>
             )}
           </div>

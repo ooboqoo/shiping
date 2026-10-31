@@ -153,6 +153,16 @@ const api = {
     ipcRenderer.removeAllListeners('open-settings')
   },
 
+  // 框选识别 showed its answer and the window holds the keyboard (true), or no longer
+  onSnipSession: (callback: (active: boolean) => void) => {
+    ipcRenderer.on('snip-session', (_event, active: boolean) => callback(active))
+  },
+  removeSnipSessionListener: () => {
+    ipcRenderer.removeAllListeners('snip-session')
+  },
+  // Hide the window as the shortcut does, handing the keyboard back if it had it
+  hideMainWindow: () => ipcRenderer.invoke('hideMainWindow'),
+
   // A screenshot was refused because this profile's model takes no images
   onVisionUnsupported: (callback: (profileId: string) => void) => {
     ipcRenderer.on('vision-unsupported', (_event, profileId: string) => callback(profileId))

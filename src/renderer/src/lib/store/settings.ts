@@ -299,7 +299,7 @@ interface Settings {
   /** Hide app windows from screenshots and screen sharing */
   stealthEnabled: boolean
   hideDockIcon: boolean
-  /** macOS: no icon in the menu bar */
+  /** No tray icon (macOS menu bar, Windows notification area) */
   hideTrayIcon: boolean
 
   audioInputDeviceId: string

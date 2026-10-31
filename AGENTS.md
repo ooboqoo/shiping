@@ -216,6 +216,7 @@ relay/                       # 手机同步's relay + phone page: its own packag
 - `setIgnoreMouse` — set click-through from the settings page switch
 - `initShortcuts` / `getShortcuts` / `updateShortcuts` — shortcut management
 - `stopSolutionStream` — abort current AI stream
+- `hideMainWindow` — the header's 隐藏 and Esc after 框选识别: hide as the shortcut does, handing the keyboard back
 - `sendFollowUpQuestion` — follow-up within conversation
 - `triggerAction` / `setToolbarVisible` — overlay toolbar: run a shortcut action, toggle the window
 - `selectScreenshotDir` / `selectCodeDir` / `selectConversationDir` — folder pickers for the auto-save settings
@@ -238,6 +239,7 @@ relay/                       # 手机同步's relay + phone page: its own packag
 - `cycle-scene` — step the current mode to its next prompt scene; the renderer owns the list and syncs the new prompt back
 - `switch-mode` — show the other mode's page (shortcut / toolbar); the renderer owns the routes
 - `open-settings` — the tray menu's 设置…: main has already revealed the window
+- `snip-session` — 框选识别's answer is up and the window holds the keyboard (`true`), or no longer: 截图模式 hides on Esc meanwhile
 - `vision-unsupported` — a screenshot was refused for want of image input (profile id); the renderer marks the profile text-only if nothing better is known
 - `toggle-hint-mode` — flip 对话模式 between automatic and manual hints; the renderer owns the setting
 - `conversation-utterance` / `conversation-utterance-removed` / `conversation-hint` / `conversation-hint-chunk` / `conversation-cleared` / `conversation-notice` — 对话模式 state from main
@@ -432,6 +434,9 @@ The app was renamed from 截屏解题助手 (`interview-coder-cn`) to 识屏 (`s
 - A click runs `snipScreenshot`, exactly as the shortcut does (`runShortcutAction()`). Off 截图模式's page the shortcut does nothing, so the click opens the menu instead, where the item says why it is disabled
 - Right-click (and Control-click on macOS) opens the menu, rebuilt on every opening: 框选识别, 显示 / 隐藏窗口 (`hideOrShowMainWindow`; a soft-hidden window counts as hidden, `isMainWindowShown()`), 设置… (reveals the window and sends `open-settings`; the renderer owns the routes), 退出识屏. Items show their registered shortcut (`registeredShortcut()`, `registerAccelerator: false`)
 - Shown by default, hidden with `hideTrayIcon` (「界面与隐私」), applied live from the settings sync. The persisted value lives in the renderer, so like the Dock icon (main starts it hidden, see `index.ts`) the tray is only created by the first sync: it never flashes for someone who hides it
+- The header has both 隐藏 (–, `hideMainWindow`) and 退出 (✕, `window.close()`), so each button always means one thing. Closing the window quits on both platforms (`window-all-closed` in `index.ts`): every tray action needs that window, so the tray must not outlive it
+- After 框选识别 the window takes the keyboard (the picker had it) and starts a snip session (`snip-session`): Esc hides the window. It works exactly while the status bar shows the 「Esc 隐藏窗口」 hint after 「新开对话」, in the same style: the answer finished and the shortcut hints shown (`hideShortcutHints` off), and not with the follow-up dialog open, where Esc closes the dialog. The session ends when the window loses the keyboard, is hidden, or leaves 截图模式's page, so Esc never acts on a window the user is not using. Every other way of showing the window keeps the overlay's rule of not taking focus, and Esc stays with the app in front
+- `hideMainWindow()` hands the keyboard back when the window had it: `app.hide()` on macOS (the window is hidden already; a later `showInactive()` still does not activate the app), `blur()` on Windows. A window without it changes nothing
 - No tooltip: it is drawn outside content protection. The icon itself is not covered either, so it shows when the whole screen is shared; the setting's note says so
 - macOS uses a template image (`resources/trayTemplate.png` + `@2x`, drawn from `build/tray.svg`), tinted by the system for a light or dark menu bar; Windows uses `resources/tray.ico`, the 16–64 px entries of `build/icon.ico`
 

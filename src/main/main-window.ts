@@ -3,6 +3,7 @@ import { shell, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { createToolbarWindow } from './toolbar-window'
 import { applyContentProtection, registerStealthWindow } from './window-privacy'
+import { watchMainWindowFocus } from './shortcuts'
 
 export function createWindow(): void {
   // Create the browser window.
@@ -43,6 +44,7 @@ export function createWindow(): void {
   mainWindow.setMenuBarVisibility(false)
 
   registerStealthWindow(mainWindow, '识屏 Shiping', true)
+  watchMainWindowFocus(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()

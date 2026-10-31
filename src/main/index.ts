@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import './legacy-name'
-import { app, BrowserWindow, desktopCapturer, globalShortcut, session } from 'electron'
+import { app, desktopCapturer, globalShortcut, session } from 'electron'
 
 type AbortLikeError = {
   name?: string
@@ -102,24 +102,19 @@ app.whenReady().then(() => {
   // Configure auto-updater
   initAutoUpdater()
 
+  // Clicking the Dock icon brings back a window hidden with the shortcut
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    } else if (global.mainWindow && !global.mainWindow.isVisible()) {
+    if (global.mainWindow && !global.mainWindow.isVisible()) {
       global.mainWindow.show()
     }
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+// Closing the window quits, on macOS too: the main window is the whole app.
+// Left running without it, the process would keep a tray icon whose actions
+// all need that window, and no shortcuts. Hiding it (shortcut, tray menu, the
+// header's 隐藏 button) keeps the app in the background
 app.on('window-all-closed', () => {
-  // Unregister all shortcuts when there is no window left
   globalShortcut.unregisterAll()
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  app.quit()
 })

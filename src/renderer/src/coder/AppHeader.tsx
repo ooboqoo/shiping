@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Camera, HelpCircle, MessagesSquare, SettingsIcon, X } from 'lucide-react'
+import { Camera, HelpCircle, MessagesSquare, Minus, SettingsIcon, X } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -89,8 +89,18 @@ export function AppHeader({ mode }: { mode: AppMode }) {
         >
           <HelpCircle />
         </Button>
+        {/* Both always there, so each button means one thing */}
         <Button
           variant="ghost"
+          aria-label="隐藏窗口"
+          className="size-8 cursor-pointer hover:opacity-50"
+          onClick={() => void window.api.hideMainWindow()}
+        >
+          <Minus />
+        </Button>
+        <Button
+          variant="ghost"
+          aria-label="退出识屏"
           className="size-8 cursor-pointer hover:opacity-50 hover:text-red-500"
           onClick={() => window.close()}
         >
