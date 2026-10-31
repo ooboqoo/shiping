@@ -5,6 +5,7 @@
 **识屏 Shiping** (package `shiping`; called 截屏解题助手 / interview-coder-cn until 2026-10, see Legacy Name) is a desktop application that captures screenshots of whatever is on screen (coding challenges, exam questions, code, error messages, charts, foreign-language text, or anything else) and uses AI (vision models) to answer about it in real-time. The window is invisible to screen-sharing software, so it stays usable while the screen is shared.
 
 Key capabilities:
+
 - Global shortcuts trigger screenshot capture → AI analysis → streamed solution display
 - Frameless, transparent, always-on-top overlay window invisible to screen-sharing
 - Mouse passthrough mode (window ignores mouse events)
@@ -19,16 +20,16 @@ Key capabilities:
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Electron 37 (electron-vite 6) |
-| Frontend | React 19, TypeScript 5.8 |
-| Styling | Tailwind CSS v4, shadcn/ui (New York style), Radix primitives |
-| State | Zustand 5 (6 stores, 2 with localStorage persistence) |
-| Routing | react-router v7 (HashRouter: `/` 截图模式, `/conversation` 对话模式, `/settings`, `/help`, plus `/toolbar` for the toolbar window) |
-| AI | Vercel AI SDK (`ai` + `@ai-sdk/openai-compatible`), streaming via `streamText()` |
-| Build | electron-vite (Vite 7), electron-builder 25 |
-| Linting | ESLint 9 (flat config), Prettier |
+| Layer     | Technology                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Framework | Electron 37 (electron-vite 6)                                                                                                      |
+| Frontend  | React 19, TypeScript 5.8                                                                                                           |
+| Styling   | Tailwind CSS v4, shadcn/ui (New York style), Radix primitives                                                                      |
+| State     | Zustand 5 (6 stores, 2 with localStorage persistence)                                                                              |
+| Routing   | react-router v7 (HashRouter: `/` 截图模式, `/conversation` 对话模式, `/settings`, `/help`, plus `/toolbar` for the toolbar window) |
+| AI        | Vercel AI SDK (`ai` + `@ai-sdk/openai-compatible`), streaming via `streamText()`                                                   |
+| Build     | electron-vite (Vite 7), electron-builder 25                                                                                        |
+| Linting   | ESLint 9 (flat config), Prettier                                                                                                   |
 
 ## Directory Structure
 
@@ -208,6 +209,7 @@ relay/                       # 手机同步's relay + phone page: its own packag
 ### IPC Channels
 
 **Renderer → Main (invoke):**
+
 - `getAppSettings` / `updateAppSettings` — settings CRUD
 - `listModels` — fetch the model list of an OpenAI-compatible platform (runs in main to avoid CORS)
 - `proxy:detect` / `proxy:test` — 网络代理: the system proxy's route for the edited profile's URL; a draft proxy setting tried on that profile's `/models` (10s, saves nothing)
@@ -232,6 +234,7 @@ relay/                       # 手机同步's relay + phone page: its own packag
 - `mobile:get-status` — 手机同步: each path's state, the viewer links (LAN: one per local address, best first) and phone counts; polled by the settings page
 
 **Main → Renderer (send):**
+
 - `sync-app-state` — push state changes (e.g., mouse ignore toggle) to both the main and the toolbar window
 - `screenshot-taken` / `screenshots-updated` — screenshot data (`screenshots-updated` also carries the untruncated conversation total)
 - `solution-clear` / `solution-chunk` / `solution-complete` / `solution-stopped` / `solution-error` — AI streaming lifecycle
@@ -256,14 +259,14 @@ relay/                       # 手机同步's relay + phone page: its own packag
 
 ### Zustand Stores
 
-| Store | File | Persisted | Key State |
-|-------|------|-----------|-----------|
-| `useSettingsStore` | `lib/store/settings.ts` | Yes (v8) | `apiProfiles`, `activeProfileId` (the one being edited), `screenshotProfileId`, `conversationProfileId`, `hasConfiguredApi`, `apiBaseURL`, `apiKey`, `apiHeaders`, `model`, `disableThinking` (mirror of the edited profile), `customModels`, `customModelsByBaseURL`, `modelByBaseURL`, `scenes` (prompt scenes, each with a `mode`), `activeSceneId` / `conversationSceneId`, `customPrompt` / `conversationPrompt` (derived from each mode's scene), `lastMode`, `conversationHintMode`, `conversationSilenceMs`, `conversationMinChars`, `conversationTranscriptHidden`, `conversationAutoSave`, `conversationSaveDir`, `opacity`, `resizable`, `showOverlayToolbar`, `toolbarHoverDelay`, `hideShortcutHints`, `screenshotDisplay`, `captureScreen`, `captureRegion`, `screenshotAutoSave`, `screenshotDir`, `codeAutoSave`, `codeSaveDir`, `codeFileBaseName`, `codeNamingMode`, `codeCopyToClipboard`, `dashscopeApiKey`, `mobileLanEnabled`, `mobileLanKey`, `mobileRelayEnabled`, `mobileRelayURL`, `mobileRelayKey`, `networkProxy`, `hideDockIcon`, `hideTrayIcon` |
-| `useShortcutsStore` | `lib/store/shortcuts.ts` | Yes (v5) | `shortcuts` (action → key mapping with categories); `merge` adds new default actions on every load, so a new shortcut needs no `version` bump |
-| `useSolutionStore` | `lib/store/solution.ts` | No | `isLoading`, `solutionChunks`, `reasoningRounds`, `liveRound`, `roundUi`, `screenshotData`, `errorMessage`, `durationMs` |
-| `useTranscriptionStore` | `lib/store/transcription.ts` | No | `isTranscribing`, `transcriptionText`, `errorMessage` |
-| `useConversationStore` | `lib/store/conversation.ts` | No | `utterances`, `hints`, `errorMessage`, `focusedHintId` |
-| `useAppStore` | `lib/store/app.ts` | No | `ignoreMouse`, `inConversationPage`, `update` (a newer release, from main) |
+| Store                   | File                         | Persisted | Key State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | ---------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useSettingsStore`      | `lib/store/settings.ts`      | Yes (v8)  | `apiProfiles`, `activeProfileId` (the one being edited), `screenshotProfileId`, `conversationProfileId`, `hasConfiguredApi`, `apiBaseURL`, `apiKey`, `apiHeaders`, `model`, `disableThinking` (mirror of the edited profile), `customModels`, `customModelsByBaseURL`, `modelByBaseURL`, `scenes` (prompt scenes, each with a `mode`), `activeSceneId` / `conversationSceneId`, `customPrompt` / `conversationPrompt` (derived from each mode's scene), `lastMode`, `conversationHintMode`, `conversationSilenceMs`, `conversationMinChars`, `conversationTranscriptHidden`, `conversationAutoSave`, `conversationSaveDir`, `opacity`, `resizable`, `showOverlayToolbar`, `toolbarHoverDelay`, `hideShortcutHints`, `screenshotDisplay`, `captureScreen`, `captureRegion`, `screenshotAutoSave`, `screenshotDir`, `codeAutoSave`, `codeSaveDir`, `codeFileBaseName`, `codeNamingMode`, `codeCopyToClipboard`, `dashscopeApiKey`, `mobileLanEnabled`, `mobileLanKey`, `mobileRelayEnabled`, `mobileRelayURL`, `mobileRelayKey`, `networkProxy`, `hideDockIcon`, `hideTrayIcon` |
+| `useShortcutsStore`     | `lib/store/shortcuts.ts`     | Yes (v5)  | `shortcuts` (action → key mapping with categories); `merge` adds new default actions on every load, so a new shortcut needs no `version` bump                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `useSolutionStore`      | `lib/store/solution.ts`      | No        | `isLoading`, `solutionChunks`, `reasoningRounds`, `liveRound`, `roundUi`, `screenshotData`, `errorMessage`, `durationMs`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `useTranscriptionStore` | `lib/store/transcription.ts` | No        | `isTranscribing`, `transcriptionText`, `errorMessage`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `useConversationStore`  | `lib/store/conversation.ts`  | No        | `utterances`, `hints`, `errorMessage`, `focusedHintId`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `useAppStore`           | `lib/store/app.ts`           | No        | `ignoreMouse`, `inConversationPage`, `update` (a newer release, from main)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Settings are bidirectionally synced: renderer persists to localStorage, and on mount syncs to main process via `updateAppSettings()`. Main process `.env` values serve as initial defaults only.
 
@@ -276,6 +279,7 @@ Adding a settings key needs no `version` bump: zustand shallow-merges the persis
 `stealthEnabled` defaults to `true`, is persisted by the renderer, and can be toggled in 「界面与隐私 → 隐身模式」 without restarting. `src/main/window-privacy.ts` registers the main window, toolbar and region pickers so current and newly created windows follow it. Disabling restores capture visibility and window titles, plus the main window's taskbar / Mission Control entry; `hideDockIcon` and `hideTrayIcon` remain independent. Startup settings sync must not overwrite a persisted `false` with main's `true` default.
 
 When enabled, the app is designed to be invisible to screen-sharing software:
+
 - `BrowserWindow` options: `transparent: true`, `frame: false`, `skipTaskbar: true`
 - `setContentProtection(true)` prevents screen capture of the window itself
 - `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })`
@@ -286,6 +290,7 @@ When enabled, the app is designed to be invisible to screen-sharing software:
 ### Overlay Toolbar
 
 A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolbar` route, so the shortcut actions can be driven with the mouse instead of the keyboard:
+
 - Owns its own visibility state: the renderer calls `setToolbarVisible()` (main page + `showOverlayToolbar` setting), main additionally requires the main window to be visible. Never call `showInactive()` on it directly — go through `showToolbar()` / `hideToolbar()`.
 - The window exists only while `showOverlayToolbar` is on (`setToolbarEnabled()` from the settings sync): it is a renderer of its own, about 40 MB. Like the tray icon it is created by the first sync, so code reaching it must allow for no window
 - `focusable: false` so clicking a button never pulls focus away from the app underneath
@@ -299,6 +304,7 @@ A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolb
 ### Window Resizing
 
 Both windows are created with `resizable: false` — toggling Electron's native resizable style breaks transparency on Windows — so resizing is implemented by hand:
+
 - `WindowResizeHandles` renders eight fixed-position edge/corner divs — or, with `axis="x"`, just the two side edges — and sends only `window-resize-start` (pointerdown) and `window-resize-stop`
 - `nonActivating` (the toolbar) also starts the drag from the first pointermove made with the button held, because Windows never delivers that window's pointerdown (see Overlay Toolbar)
 - `src/main/window-resize.ts` then polls `screen.getCursorScreenPoint()` and calls `setBounds()`. The cursor is sampled in main because the toolbar is a non-activating panel on macOS and never receives a drag's pointer moves
@@ -330,6 +336,7 @@ Both windows are created with `resizable: false` — toggling Electron's native 
 ### Capture Region
 
 `captureRegion` crops every screenshot to one area of one screen, stored as fractions of that screen (`src/shared/capture-region.ts`) so a resolution or scaling change does not shift it:
+
 - Three entry points — the settings button, the toolbar button and the `pickCaptureRegion` shortcut — all go through `pickRegion()` in `shortcuts.ts`, which applies the result to main's `settings` at once and sends `capture-region-picked` for the renderer store to persist
 - `pickRegion()` soft-hides the main window through `whilePicking()` (unless it already was), then `region-picker.ts` opens one window per screen at `screen-saver` level above the main window and toolbar, each showing a frozen capture of its screen (content protection keeps the app out of it)
 - Started from a shortcut or the toolbar, another app is active: the picker under the cursor takes focus (`app.focus({ steal: true })` on macOS) so Enter / Esc cannot land in, say, an exam page, and `acceptFirstMouse` lets the first click start a drag
@@ -342,6 +349,7 @@ Both windows are created with `resizable: false` — toggling Electron's native 
 ### Conversation Mode (对话模式)
 
 `/conversation` turns what the other side of a call says into hints, without screenshots. Main owns the conversation (`src/main/conversation.ts`); the page shows a copy, fetched with `conversation:get-snapshot` on mount and kept current by events, so visiting the settings mid-call loses nothing:
+
 - Recognition runs with `purpose: 'conversation'` and `max_sentence_silence: conversationSilenceMs`; `transcription.ts` then hands every sentence revision to `conversation.ts` instead of accumulating 截图模式's text. Listening keeps running on the settings / help pages and stops when 截图模式's page mounts
 - It is meant for system audio: in an online call that is only the other side, so a finished sentence can trigger a hint without speaker detection
 - Automatic (`conversationHintMode: 'auto'`): a finished sentence with at least `conversationMinChars` meaningful characters asks for a hint at once, covering every sentence since the last hint. If the other side keeps talking (a new sentence reaches the minimum while the automatic hint streams) the hint is withdrawn (`waiting`) and rewritten into the same card when they finish — or when that sentence comes to nothing, or listening stops
@@ -355,6 +363,7 @@ Both windows are created with `resizable: false` — toggling Electron's native 
 ### 资料库 (Knowledge)
 
 Material the user wants the AI to draw on — a resume, prepared Q&A, notes — kept by main (`src/main/knowledge.ts`), not by the renderer store:
+
 - Stored under `userData/knowledge/`: `index.json` for the list, `<id>.txt` per text, both cached in memory once read. Not in localStorage: a few documents would outgrow it, and settings are synced to main whole on every change
 - Only the extracted text is kept, and the user can edit it (a PDF's layout often needs it); `sourcePath` is remembered for 「重新导入」, which overwrites those edits
 - Each doc lists the modes it is sent with (`modes`, empty = kept but unused). `getKnowledgePrompt(mode)` wraps them in `<资料 name="…">` blocks with the rules for using them, and `getSystemPrompt()` in `ai.ts` puts that **before** the scene prompt: a prefix stable across requests and scene switches is what platforms cache, and the scene's format rules end up closer to the question
@@ -399,6 +408,7 @@ Material the user wants the AI to draw on — a resume, prepared Q&A, notes — 
 ### 手机同步 (Mobile Sync)
 
 What the mode pages show, mirrored read-only to a phone's browser (`src/main/mobile-sync.ts`). The app is the only source of truth; phones only display:
+
 - Main pushes the **whole** state (`MobileState` in `src/shared/mobile.ts`) as one JSON message, at most every 200ms, and the relay keeps the last one for phones that open later. No diffs, no history: a phone that reconnects just gets the current state. `v` is the format version for when the page and the app drift apart. Since the whole state is resent, it must stay under the relay's `MAX_PAYLOAD` (1 MiB): 截图模式's answer goes out as its last `MOBILE_TEXT_LIMIT` characters, and the relay client drops a frame that is still too big instead of sending it (which would close with 1009 and resend it on every reconnect)
 - Parts of the state are `registerMobileSource()`d by their owners — 截图模式's answer in `shortcuts.ts` (`mobileAnswer`, appended in `sendAnswerChunk()`), 对话模式's last cards and sentences in `conversation.ts` — which call `markMobileDirty()` on change. A new part is a new source key plus its rendering in `relay/public/app.js`. `mode` follows the page on screen (the page-change handler marks dirty) and keeps the last mode on the settings / help pages
 - The page shortcuts (`pageUp` / `pageDown`) page the phones too, for a phone read without being touched: `pageMobile()` moves `paging`, a count in the state, and the page scrolls the tab in view by how much it changed since the last message. Presses within one push add up; the first state after (re)connecting or a `host` message only sets the baseline, so nothing is replayed and a restarted app counting from 0 pages nothing
@@ -412,6 +422,7 @@ What the mode pages show, mirrored read-only to a phone's browser (`src/main/mob
 ### Update Notice
 
 `src/main/auto-updater.ts` checks at startup and every 6 hours, and reports a newer release with `update-status`. It is never a native dialog or a system notification: those are drawn outside content protection, so one popping up mid-interview would show on the shared screen
+
 - Shown inside the main window only: a 「有新版本」 badge after the version in `AppHeader`, leading to the help page, where `UpdateNotice` holds the details and the button
 - Windows: electron-updater with `autoDownload = false`. The user starts the download and the restart; a finished download also installs on quit (`autoInstallOnAppQuit`)
 - macOS: no Apple signature (see macOS Signing), and Squirrel.Mac was never tried with it. Main requests github.com/…/releases/latest/download/latest.yml with `net.request` (system proxy) and reads the tag from where it redirects (`…/releases/download/<tag>/…`, whether the release has the file or not), following the extra hop a renamed repository adds, and the card links to the release page. It then downloads the file without reading it, so `latest.yml`'s download count counts the checks of both platforms; v3.4.0 and earlier read `releases/latest` instead and are not counted. v3.3.0 stops at the rename's hop, so its macOS users get no notice once the repository is renamed. Not the REST API: its 60 unauthenticated requests an hour per IP run out on a shared proxy exit
@@ -420,6 +431,7 @@ What the mode pages show, mirrored read-only to a phone's browser (`src/main/mob
 ### Legacy Name
 
 The app was renamed from 截屏解题助手 (`interview-coder-cn`) to 识屏 (`shiping`) in 2026-10. A few things keep the old name, because changing them would cost every existing user something:
+
 - `appId` (`com.electron.app`): macOS TCC grants and the Windows installer's upgrade-in-place (its GUID) both key on it
 - The macOS signing certificate's name (see macOS Signing): a new certificate means a new grant
 - The zustand `persist` keys `interview-coder-settings` / `interview-coder-shortcuts`: localStorage is looked up by them
@@ -430,6 +442,7 @@ The app was renamed from 截屏解题助手 (`interview-coder-cn`) to 识屏 (`s
 ### macOS Signing
 
 `build/after-pack.mjs` signs the macOS app with a self-signed certificate (`Interview Coder CN`, named before the rename; SHA-1 in `CERT_SHA1`). electron-builder's own signing is off (`mac.identity: null`): it only takes a certificate macOS trusts:
+
 - The signature is what makes system audio work, not only a Gatekeeper matter. Without one bound to the bundle (Electron's linker signature only), TCC identifies the app by its executable path when a helper asks on its behalf, so the audio service is refused the screen capture behind system audio while screenshots, taken in the main process, work (#104)
 - The certificate keeps the designated requirement (`identifier "com.electron.app" and certificate leaf = H"…"`) the same across releases, so a user grants 屏幕与系统音频录制 once. An ad-hoc signature would tie it to each build's hash. A new certificate or a new `appId` makes every user grant it again
 - CI imports the certificate from the `MAC_CERT_P12_BASE64` / `MAC_CERT_PASSWORD` secrets into a temporary keychain (`MAC_SIGN_KEYCHAIN`), which must be on the user search list: codesign on macOS 26 finds no identity elsewhere, `--keychain` or not. The build fails without the certificate; a local build without it is signed ad-hoc
@@ -438,6 +451,7 @@ The app was renamed from 截屏解题助手 (`interview-coder-cn`) to 识屏 (`s
 ### Tray Icon
 
 `src/main/tray.ts`: the macOS menu bar icon and the Windows notification-area icon, there mainly for 框选识别, so the app can stay hidden and still be used with the mouse alone:
+
 - A click runs `snipScreenshot`, exactly as the shortcut does (`runShortcutAction()`). Off 截图模式's page the shortcut does nothing, so the click opens the menu instead, where the item says why it is disabled
 - Right-click (and Control-click on macOS) opens the menu, rebuilt on every opening: 框选识别, 显示 / 隐藏窗口 (`hideOrShowMainWindow`; a soft-hidden window counts as hidden, `isMainWindowShown()`), 设置… (reveals the window and sends `open-settings`; the renderer owns the routes), 退出识屏. Items show their registered shortcut (`registeredShortcut()`, `registerAccelerator: false`)
 - Shown by default, hidden with `hideTrayIcon` (「界面与隐私」), applied live from the settings sync. The persisted value lives in the renderer, so like the Dock icon (main starts it hidden, see `index.ts`) the tray is only created by the first sync: it never flashes for someone who hides it
