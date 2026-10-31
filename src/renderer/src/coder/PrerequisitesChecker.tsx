@@ -5,6 +5,10 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { Button } from '@/components/ui/button'
 import { SelectBaseURL } from '@/settings/SelectBaseURL'
 import { changeApiBaseURL } from '@/lib/model-switch'
+import { PROVIDERS } from '@/lib/providers'
+
+/** Preselected for a first setup: the recommended platform, so a key alone is enough */
+const RECOMMENDED_BASE_URL = PROVIDERS.find((p) => p.id === 'deepseek')!.baseURL
 
 /** Whether any saved profile already holds a key, even if the flag is not set yet */
 function hasAnyKeyStored(): boolean {
@@ -16,7 +20,10 @@ export function PrerequisitesChecker() {
   const navigate = useNavigate()
   const { apiKey, apiBaseURL, hasConfiguredApi, updateCredential } = useSettingsStore()
   const [inputApiKey, setInputApiKey] = useState(apiKey)
-  const [inputApiBaseURL, setInputApiBaseURL] = useState(apiBaseURL)
+  // null until the user picks: follows the store meanwhile, so a URL from `.env`
+  // synced after mount still wins over the recommended one
+  const [pickedBaseURL, setInputApiBaseURL] = useState<string | null>(null)
+  const inputApiBaseURL = pickedBaseURL ?? (apiBaseURL || RECOMMENDED_BASE_URL)
   const [showApiKey, setShowApiKey] = useState(false)
 
   // The dialog only asks for a key once in the app's life. It used to key off
@@ -48,34 +55,24 @@ export function PrerequisitesChecker() {
       <div className="m-auto bg-white rounded-lg p-6 pt-1 w-120 shadow-lg">
         <h1 className="text-xl font-bold text-center mb-2">欢迎使用识屏</h1>
         <div className="text-sm text-gray-600">
-          请先配置大模型聚合平台信息，如国内的
+          请先配置 AI 平台，推荐使用
           <a
-            href="https://cloud.siliconflow.cn/i/SG8C0772"
+            href="https://platform.deepseek.com/"
             target="_blank"
             rel="noreferrer"
             className="text-blue-500 mx-1"
           >
-            硅基流动
+            DeepSeek
           </a>
-          或国外的
-          <a
-            href="https://openrouter.ai/"
-            target="_blank"
-            rel="noreferrer"
-            className="text-blue-500 mx-1"
-          >
-            OpenRouter
-          </a>
-          等 。
+          ，已经选好它的地址，填上 API Key 即可。其他兼容 OpenAI API
+          的平台也可以，在下面换成它的地址。
         </div>
 
         <div className="space-y-2 my-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
               API Base URL{' '}
-              <span className="text-xs font-normal text-gray-500">
-                (配置硅基流动或其他代理服务商的 API Base URL 地址)
-              </span>
+              <span className="text-xs font-normal text-gray-500">(留空即 OpenAI 官方)</span>
             </label>
             <SelectBaseURL
               className="w-full"
