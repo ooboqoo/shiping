@@ -3,7 +3,7 @@ import { shell, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { attachToolbar } from './toolbar-window'
 import { applyContentProtection, registerStealthWindow } from './window-privacy'
-import { syncShortcuts, watchMainWindowFocus } from './shortcuts'
+import { isMainWindowShown, syncShortcuts, watchMainWindowFocus } from './shortcuts'
 
 export function createWindow(): void {
   // Create the browser window.
@@ -60,9 +60,10 @@ export function createWindow(): void {
     })
     applyContentProtection(mainWindow)
 
-    // Reclaim top position when other apps steal it
+    // Reclaim top position when other apps steal it. Not while soft-hidden:
+    // handing the keyboard back drops it out of the top-most band on purpose
     mainWindow.on('always-on-top-changed', (_event, isAlwaysOnTop) => {
-      if (!isAlwaysOnTop && mainWindow.isVisible() && !mainWindow.isDestroyed()) {
+      if (!isAlwaysOnTop && isMainWindowShown()) {
         // Only re-set the flag; avoid moveTop() to not disturb other window focus
         mainWindow.setAlwaysOnTop(true, 'screen-saver', 1)
       }

@@ -147,13 +147,19 @@ function setSnipSession(active: boolean): void {
  * Give the keyboard back to the app the user was in, after hiding a window
  * that had it (`hadFocus`, read before hiding: a hidden window is never
  * focused). A window without it changes nothing: the app in front keeps it.
- * macOS hands it back when the app hides, the window being hidden already;
- * Windows only needs the focus taken off the window, now parked off-screen
+ * macOS hands it back when the app hides, the window being hidden already.
+ * Windows' blur() hands the foreground to the next visible window in z-order,
+ * which for a top-most window is the taskbar, so the window, parked
+ * off-screen, first leaves the top-most band; showing it again re-raises it
  */
 function returnFocus(window: BrowserWindow, hadFocus: boolean): void {
   if (!hadFocus || window.isDestroyed()) return
-  if (process.platform === 'darwin') app.hide()
-  else window.blur()
+  if (process.platform === 'darwin') {
+    app.hide()
+    return
+  }
+  window.setAlwaysOnTop(false)
+  window.blur()
 }
 
 /**
