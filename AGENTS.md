@@ -21,7 +21,7 @@ Key capabilities:
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Electron 37 (electron-vite 4) |
+| Framework | Electron 37 (electron-vite 6) |
 | Frontend | React 19, TypeScript 5.8 |
 | Styling | Tailwind CSS v4, shadcn/ui (New York style), Radix primitives |
 | State | Zustand 5 (6 stores, 2 with localStorage persistence) |
