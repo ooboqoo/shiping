@@ -28,7 +28,7 @@ process.on('uncaughtException', (error) => {
   console.error(error)
 })
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import './shortcuts'
+import { syncShortcuts } from './shortcuts'
 import './transcription'
 import './conversation'
 import './knowledge'
@@ -106,6 +106,7 @@ app.whenReady().then(() => {
   app.on('activate', function () {
     if (global.mainWindow && !global.mainWindow.isVisible()) {
       global.mainWindow.show()
+      syncShortcuts()
     }
   })
 })

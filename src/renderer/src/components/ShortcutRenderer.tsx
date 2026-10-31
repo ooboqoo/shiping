@@ -8,7 +8,8 @@ export default function ShortcutRenderer({
   shortcut: string
   className?: string
 }) {
-  const keys = getShortcutAcceleratorDisplay(shortcut).split('+')
+  // Cleared in the settings: the action has no key
+  const keys = shortcut ? getShortcutAcceleratorDisplay(shortcut).split('+') : ['未设置']
   return (
     <span
       className={cn(

@@ -5,6 +5,7 @@ import type { AppState } from '../main/state'
 import type { ListModelsOptions, ModelListResult } from '../main/model-list'
 import type { DisplayOption } from '../main/take-screenshot'
 import type { RegionPickerData } from '../main/region-picker'
+import type { Shortcut } from '../main/shortcuts'
 import type { CaptureRegion, RegionRect } from '../shared/capture-region'
 import type { TranscriptionOptions } from '../main/transcription'
 import type { ConversationSnapshot, HintCard, Utterance } from '../shared/conversation'
@@ -65,11 +66,14 @@ const api = {
   // Init shortcuts
   initShortcuts: (shortcuts: Record<string, { action: string; key: string }>) =>
     ipcRenderer.invoke('initShortcuts', shortcuts),
-  // Get shortcuts
-  getShortcuts: () => ipcRenderer.invoke('getShortcuts'),
+  // Get shortcuts, with whether each key is held (`failed`: another app holds it)
+  getShortcuts: () => ipcRenderer.invoke('getShortcuts') as Promise<Record<string, Shortcut>>,
   // Update shortcuts
   updateShortcuts: (shortcuts: { action: string; key: string }[]) =>
     ipcRenderer.invoke('updateShortcuts', shortcuts),
+  // The settings page is recording a key: main lets go of every key meanwhile
+  setShortcutRecording: (recording: boolean) =>
+    ipcRenderer.invoke('setShortcutRecording', recording),
 
   // Trigger the small set of user-facing actions exposed by the overlay toolbar.
   triggerAction: (

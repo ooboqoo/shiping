@@ -128,6 +128,26 @@ const status: MobileSyncStatus = {
   relay: { state: 'off', url: '', viewers: 0 }
 }
 
+/** Some phone is watching, on either path */
+export function hasMobileViewers(): boolean {
+  return status.lan.viewers + status.relay.viewers > 0
+}
+
+const viewerListeners: (() => void)[] = []
+let hadViewers = false
+
+/** Run `listener` whenever phones start or stop watching */
+export function onMobileViewersChanged(listener: () => void): void {
+  viewerListeners.push(listener)
+}
+
+/** Called after every change to a viewer count */
+function noteViewers() {
+  if (hasMobileViewers() === hadViewers) return
+  hadViewers = !hadViewers
+  for (const listener of viewerListeners) listener()
+}
+
 /**
  * Local IPv4 addresses, likeliest to be the phone's Wi-Fi first: home and
  * office ranges, then the rest; virtual adapters (Hyper-V, WSL, VMs, a proxy's
@@ -176,6 +196,7 @@ function startLan(key: string) {
     viewerToken: deriveViewerToken(key),
     onViewers: (count) => {
       status.lan.viewers = count
+      noteViewers()
     }
   })
   const current = { key, relay }
@@ -195,6 +216,7 @@ function startLan(key: string) {
           ? `端口 ${LAN_PORT} 被其他程序占用`
           : `启动失败：${error.message}`
     }
+    noteViewers()
   })
   relay.server.listen(LAN_PORT, '0.0.0.0', () => {
     if (lan !== current) return
@@ -244,7 +266,9 @@ function connectRelay(id: string, base: URL, key: string): RelayClient {
   let silenceTimer: NodeJS.Timeout | null = null
 
   const set = (patch: Partial<MobileSyncStatus['relay']>) => {
-    if (!closed) Object.assign(status.relay, patch)
+    if (closed) return
+    Object.assign(status.relay, patch)
+    noteViewers()
   }
 
   /**
@@ -383,6 +407,8 @@ function reconcile() {
   // A failed start is tried again with the next settings change
   if (lanKey && !lan) startLan(lanKey)
   reconcileRelay()
+  // Switching a path off drops its phones
+  noteViewers()
 }
 
 let reconcileTimer: NodeJS.Timeout | null = null

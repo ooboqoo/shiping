@@ -1,9 +1,9 @@
 import { join } from 'node:path'
 import { shell, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import { createToolbarWindow } from './toolbar-window'
+import { attachToolbar } from './toolbar-window'
 import { applyContentProtection, registerStealthWindow } from './window-privacy'
-import { watchMainWindowFocus } from './shortcuts'
+import { syncShortcuts, watchMainWindowFocus } from './shortcuts'
 
 export function createWindow(): void {
   // Create the browser window.
@@ -39,7 +39,7 @@ export function createWindow(): void {
   // Store reference to mainWindow globally
   global.mainWindow = mainWindow
   // The toolbar follows the main window's position and visibility on its own
-  createToolbarWindow(mainWindow)
+  attachToolbar(mainWindow)
 
   mainWindow.setMenuBarVisibility(false)
 
@@ -48,6 +48,8 @@ export function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    // The renderer may have sent its shortcuts already, while the window was hidden
+    syncShortcuts()
     mainWindow.setAlwaysOnTop(true, 'screen-saver', 1)
     // The panel type is what keeps it over fullscreen apps; transforming the
     // process type would only hide the Dock icon. Dock visibility is handled

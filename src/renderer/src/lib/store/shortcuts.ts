@@ -73,7 +73,9 @@ const defaultShortcuts: Record<string, Omit<Shortcut, 'defaultKey'>> = {
   },
   snipScreenshot: {
     action: 'snipScreenshot',
-    key: `${platformAlt}+Shift+S`,
+    // Not Ctrl+Shift+S on Windows: that is 另存为 nearly everywhere, and this key
+    // stays held while the window is hidden
+    key: isMac ? 'Alt+Shift+S' : 'CommandOrControl+Alt+S',
     category: 'Screenshot'
   },
   appendScreenshot: {
@@ -202,9 +204,12 @@ export const useShortcutsStore = create<ShortcutsStore>()(
           }
         } as ShortcutsStore
 
-        // v2→v3: On Windows, migrate Alt shortcuts to CommandOrControl (Ctrl)
+        // v2→v3: On Windows, migrate Alt shortcuts to CommandOrControl (Ctrl).
+        // Only the stored ones: a default may use Alt on purpose (框选识别's Ctrl+Alt+S)
         if (version < 3 && !isMac) {
-          for (const [action, shortcut] of Object.entries(merged.shortcuts)) {
+          for (const action of Object.keys(state.shortcuts)) {
+            const shortcut = merged.shortcuts[action]
+            if (!shortcut?.key) continue
             merged.shortcuts[action] = {
               ...shortcut,
               key: shortcut.key.replace(/\bAlt\b/g, 'CommandOrControl'),
@@ -223,10 +228,11 @@ export const useShortcutsStore = create<ShortcutsStore>()(
         // `merge` runs on every rehydrate, unlike `migrate` which only runs
         // when the version changes. Stored actions that no longer exist are dropped.
         // Only the key is the user's: the category and default follow the code,
-        // so regrouping the actions reaches existing users too
+        // so regrouping the actions reaches existing users too. An empty key is
+        // one the user cleared, and stays cleared
         const shortcuts = { ...current.shortcuts }
         for (const [action, shortcut] of Object.entries(stored)) {
-          if (shortcuts[action] && shortcut?.key) {
+          if (shortcuts[action] && typeof shortcut?.key === 'string') {
             shortcuts[action] = { ...shortcuts[action], key: shortcut.key }
           }
         }

@@ -3,21 +3,48 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { isModifierKey, getShortcutAccelerator } from '@/lib/utils/keyboard'
-import { useShortcutsStore } from '@/lib/store/shortcuts'
+import { useShortcutsStore, type Shortcut as StoredShortcut } from '@/lib/store/shortcuts'
 import { useSettingsStore } from '@/lib/store/settings'
 
 const ShortcutsContext = createContext<{
   recordingAction: string | null
   setRecordingAction: (action: string | null) => void
+  /** Actions whose key another app holds */
+  failed: Set<string>
 }>({
   recordingAction: null,
-  setRecordingAction: () => {}
+  setRecordingAction: () => {},
+  failed: new Set()
 })
+
+/**
+ * The actions whose key another app holds, as main finds when it tries them.
+ * Asked again whenever a binding changes, a moment later: main applies it first
+ */
+function useFailedShortcuts(shortcuts: Record<string, StoredShortcut>): Set<string> {
+  const [failed, setFailed] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void window.api.getShortcuts().then((status) => {
+        setFailed(
+          new Set(
+            Object.values(status)
+              .filter((shortcut) => shortcut.status === 'failed')
+              .map((shortcut) => shortcut.action)
+          )
+        )
+      })
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [shortcuts])
+  return failed
+}
 
 export function CustomShortcuts() {
   const { shortcuts, updateShortcut } = useShortcutsStore()
   const { dashscopeApiKey } = useSettingsStore()
   const [recordingAction, setRecordingAction] = useState<string | null>(null)
+  const failed = useFailedShortcuts(shortcuts)
 
   const onShortcutChange = useCallback(
     (action: string, key: string) => {
@@ -40,6 +67,11 @@ export function CustomShortcuts() {
       if (e.code === 'Escape' && !accelerator) {
         setRecordingAction(null)
       }
+      // A bare Backspace / Delete leaves the action without a key
+      if ((e.code === 'Backspace' || e.code === 'Delete') && !accelerator) {
+        onShortcutChange(recordingAction, '')
+        setRecordingAction(null)
+      }
       if (!accelerator) return
       onShortcutChange(recordingAction, accelerator)
       setRecordingAction(null)
@@ -54,8 +86,18 @@ export function CustomShortcuts() {
     }
   }, [handleKeyDown])
 
+  // Main lets go of every key while one is recorded: a held key never reaches this page
+  const recording = recordingAction !== null
+  useEffect(() => {
+    if (!recording) return
+    void window.api.setShortcutRecording(true)
+    return () => {
+      void window.api.setShortcutRecording(false)
+    }
+  }, [recording])
+
   return (
-    <ShortcutsContext.Provider value={{ recordingAction, setRecordingAction }}>
+    <ShortcutsContext.Provider value={{ recordingAction, setRecordingAction, failed }}>
       <div className="space-y-4">
         {/* Window Management */}
         <div className="space-y-2">
@@ -192,7 +234,7 @@ function Shortcut({
   disabled?: boolean
 }) {
   const { shortcuts } = useShortcutsStore()
-  const { recordingAction, setRecordingAction } = useContext(ShortcutsContext)
+  const { recordingAction, setRecordingAction, failed } = useContext(ShortcutsContext)
   const shortcut = shortcuts[shortcutAction]
   const isRecording = recordingAction === shortcutAction
 
@@ -205,15 +247,18 @@ function Shortcut({
         {description && <p className="text-xs font-light">{description}</p>}
       </div>
       <span
-        className="cursor-pointer"
+        className="flex shrink-0 items-center gap-2 cursor-pointer"
         onClick={() => setRecordingAction(isRecording ? null : shortcutAction)}
       >
-        {!isRecording ? (
-          <ShortcutRenderer shortcut={shortcut.key} />
-        ) : (
+        {!isRecording && failed.has(shortcutAction) && (
+          <span className="text-xs text-red-500">被其他软件占用，按了没反应</span>
+        )}
+        {isRecording ? (
           <span className="font-mono text-sm align-middle rounded-md pl-2 pr-1 py-1 transition-colors bg-gray-200 animate-pulse">
-            请按下自定义快捷键...
+            请按下快捷键，Backspace 清除，Esc 取消
           </span>
+        ) : (
+          <ShortcutRenderer shortcut={shortcut.key} />
         )}
       </span>
     </div>

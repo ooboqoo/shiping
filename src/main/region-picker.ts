@@ -176,11 +176,11 @@ function createPickerWindow(display: Display): BrowserWindow {
   window.webContents.on('did-fail-load', () => finish(null))
   window.on('unresponsive', () => finish(null))
 
+  // A page of its own: the app's bundle would take longer to load than the capture
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/region-picker`)
+    window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/picker.html`)
   } else {
-    // With the slash: `main.tsx` compares the hash as is, and loadFile adds only the `#`
-    window.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/region-picker' })
+    window.loadFile(join(__dirname, '../renderer/picker.html'))
   }
   return window
 }

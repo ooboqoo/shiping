@@ -2,7 +2,7 @@ import { app, dialog, ipcMain } from 'electron'
 import type { CaptureRegion } from '../shared/capture-region'
 import type { ApiProfile, AppMode } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
-import { setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
+import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 import { DEFAULT_PROXY, normalizeProxySettings } from '../shared/proxy'
 import { setStealthEnabled } from './window-privacy'
 
@@ -34,6 +34,9 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   for (const listener of settingsListeners) listener(previous)
   if ('hideDockIcon' in _settings) {
     applyDockVisibility(settings.hideDockIcon)
+  }
+  if ('showOverlayToolbar' in _settings) {
+    setToolbarEnabled(settings.showOverlayToolbar)
   }
   if ('opacity' in _settings) {
     setToolbarOpacity(settings.opacity)
@@ -105,6 +108,12 @@ export const settings = {
   conversationAutoSave: false,
   /** Where the conversations go; blank means Documents/Shiping */
   conversationSaveDir: '',
+  /**
+   * The overlay toolbar's window exists only while this is on, see
+   * toolbar-window.ts. Must stay falsy here: App.tsx fills blank renderer
+   * fields from main, so `true` would overwrite a user's "off"
+   */
+  showOverlayToolbar: false,
   /** Kept in sync with the renderer so the overlay toolbar can match the main window */
   opacity: 0.8,
   /**

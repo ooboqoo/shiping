@@ -16,26 +16,33 @@ import { saveScreenshotToDisk } from './save-screenshot'
 import { handleGeneratedCode } from './save-code'
 import { getSolutionStream, getFollowUpStream, getGeneralStream } from './ai'
 import { state, setPageChangeHandler, inModePage } from './state'
-import { settings, getModeProfile } from './settings'
+import { settings, getModeProfile, onSettingsChanged } from './settings'
 import { getTranscriptionText, clearTranscriptionText } from './transcription'
 import { consumeStream, extractErrorMessage, isImageInputRefused } from './stream'
 import type { StreamChunk } from './stream'
 import { requestHint, stopHints, clearConversation } from './conversation'
-import { markMobileDirty, pageMobile, registerMobileSource } from './mobile-sync'
+import {
+  hasMobileViewers,
+  markMobileDirty,
+  onMobileViewersChanged,
+  pageMobile,
+  registerMobileSource
+} from './mobile-sync'
 import type { MobileAnswer } from '../shared/mobile'
 
-type Shortcut = {
+/**
+ * `registered`: the key is held now. `available`: free, but not held, the
+ * action having nothing to do at the moment (see `isShortcutLive`) or no key.
+ * `failed`: another app holds the key, so pressing it never reaches this one
+ */
+type ShortcutStatus = 'registered' | 'failed' | 'available'
+
+export type Shortcut = {
   action: string
+  /** Empty when the user cleared it: the action then has no key */
   key: string
   status: ShortcutStatus
   registeredKeys: string[]
-}
-
-enum ShortcutStatus {
-  Registered = 'registered',
-  Failed = 'failed',
-  /** Shortcut is available to register but not registered. */
-  Available = 'available'
 }
 
 const MOVE_STEP = 200
@@ -221,6 +228,7 @@ function softHideWindow(window: BrowserWindow) {
   window.setIgnoreMouseEvents(true)
   window.setPosition(...getOffscreenPosition())
   hideToolbar()
+  syncShortcuts()
 }
 
 function restoreSoftHiddenWindow(window: BrowserWindow) {
@@ -236,6 +244,7 @@ function restoreSoftHiddenWindow(window: BrowserWindow) {
   applyIgnoreMouse()
   showToolbar()
   keepWindowInFront(window)
+  syncShortcuts()
 }
 
 function showMainWindow(window: BrowserWindow) {
@@ -248,6 +257,7 @@ function showMainWindow(window: BrowserWindow) {
   applyContentProtection(window, process.platform === 'win32')
   showToolbar()
   keepWindowInFront(window)
+  syncShortcuts()
 }
 
 /** Undo `hideOrShowMainWindow`'s hiding, whichever way it hid the window */
@@ -397,6 +407,8 @@ setPageChangeHandler(() => {
   broadcastAppState()
   // The phones follow the mode on screen
   markMobileDirty()
+  // The page decides which actions have anything to do
+  syncShortcuts()
 })
 
 /**
@@ -597,6 +609,7 @@ export function hideMainWindow(): void {
     mainWindow.hide()
   }
   returnFocus(mainWindow, hadFocus)
+  syncShortcuts()
 }
 
 // The header's 隐藏 button, and Esc after 框选识别
@@ -904,18 +917,79 @@ const clickableActions = new Set([
   'switchMode'
 ])
 
-function unregisterShortcut(action: string) {
-  const shortcut = shortcuts[action]
-  if (!shortcut) return
-  if (shortcut.registeredKeys.length) {
-    shortcut.registeredKeys.forEach((registeredKey) => {
-      globalShortcut.unregister(registeredKey)
-    })
-  } else {
-    globalShortcut.unregister(shortcut.key)
-  }
-  shortcut.status = ShortcutStatus.Available
+type ShortcutPage = 'any' | 'mode' | 'screenshot' | 'conversation'
+
+/**
+ * When an action has something to do, which is when its key is held (see
+ * `isShortcutLive`). `page`: the pages its callback acts on. `hidden`: it is
+ * also there to be used while the window is hidden. `window`: it acts on the
+ * window itself, so it never outlives the window being shown. `voice`: it
+ * needs the DashScope key. A new action needs an entry here too
+ */
+const SHORTCUT_SCOPES: Record<
+  string,
+  { page: ShortcutPage; hidden?: true; window?: true; voice?: true }
+> = {
+  hideOrShowMainWindow: { page: 'any', hidden: true },
+  switchMode: { page: 'mode' },
+  ignoreOrEnableMouse: { page: 'any', window: true },
+  increaseOpacity: { page: 'mode', window: true },
+  decreaseOpacity: { page: 'mode', window: true },
+  takeScreenshot: { page: 'screenshot' },
+  snipScreenshot: { page: 'screenshot', hidden: true },
+  appendScreenshot: { page: 'screenshot' },
+  pickCaptureRegion: { page: 'any' },
+  generateHint: { page: 'conversation' },
+  toggleHintMode: { page: 'conversation' },
+  stopSolutionStream: { page: 'any' },
+  previousApiProfile: { page: 'mode' },
+  nextApiProfile: { page: 'mode' },
+  cycleScene: { page: 'mode' },
+  toggleTranscription: { page: 'mode', voice: true },
+  clearTranscription: { page: 'mode', voice: true },
+  pageUp: { page: 'mode' },
+  pageDown: { page: 'mode' },
+  moveMainWindowUp: { page: 'any', window: true },
+  moveMainWindowDown: { page: 'any', window: true },
+  moveMainWindowLeft: { page: 'any', window: true },
+  moveMainWindowRight: { page: 'any', window: true }
+}
+
+function onShortcutPage(page: ShortcutPage): boolean {
+  if (page === 'screenshot') return state.inCoderPage
+  if (page === 'conversation') return state.inConversationPage
+  return page === 'any' || inModePage()
+}
+
+/**
+ * The settings page is recording a key. None is held meanwhile: a press of a
+ * held one would run its action instead of reaching the page
+ */
+let recordingShortcut = false
+
+/**
+ * Whether an action's key is held now. A held key never reaches the app in
+ * front, so each is held only while its action has something to do: on its
+ * own page, and with the window shown. Hidden, the app lives in the background
+ * and keeps only the keys meant for that (show it again, 框选识别), unless
+ * phones are watching (手机同步): their screen stands in for the window, so
+ * the actions that do not act on the window itself stay
+ */
+function isShortcutLive(action: string): boolean {
+  const scope = SHORTCUT_SCOPES[action] ?? { page: 'any' }
+  if (recordingShortcut && state.inSettingsPage) return false
+  if (scope.voice && !settings.dashscopeApiKey) return false
+  if (!onShortcutPage(scope.page)) return false
+  if (scope.hidden || isMainWindowShown()) return true
+  return !scope.window && hasMobileViewers()
+}
+
+function releaseShortcut(shortcut: Shortcut) {
+  shortcut.registeredKeys.forEach((registeredKey) => {
+    globalShortcut.unregister(registeredKey)
+  })
   shortcut.registeredKeys = []
+  shortcut.status = 'available'
 }
 
 function getShortcutRegistrationKeys(key: string) {
@@ -940,54 +1014,101 @@ function getShortcutRegistrationKeys(key: string) {
   return keys
 }
 
-function registerShortcut(action: string, key: string) {
-  if (shortcuts[action]) {
-    unregisterShortcut(action)
-  }
-
-  const keysToRegister = getShortcutRegistrationKeys(key)
-  const registeredKeys: string[] = []
+/** Hold an action's key, if it is not held already */
+function takeShortcut(shortcut: Shortcut) {
+  if (shortcut.registeredKeys.length) return
   const onPress = () => {
-    if (!isKeyRepeat(action)) callbacks[action]?.()
+    if (!isKeyRepeat(shortcut.action)) callbacks[shortcut.action]?.()
   }
-  keysToRegister.forEach((shortcutKey) => {
+  getShortcutRegistrationKeys(shortcut.key).forEach((shortcutKey) => {
     if (globalShortcut.register(shortcutKey, onPress)) {
-      registeredKeys.push(shortcutKey)
+      shortcut.registeredKeys.push(shortcutKey)
     }
   })
+  shortcut.status = shortcut.registeredKeys.length ? 'registered' : 'failed'
+}
 
-  shortcuts[action] = {
-    action,
-    key,
-    status: registeredKeys.length ? ShortcutStatus.Registered : ShortcutStatus.Failed,
-    registeredKeys
-  }
+/**
+ * Hold the keys of the actions that are live now and release the others. Run
+ * whenever what `isShortcutLive` reads changes, including by whoever shows or
+ * hides the main window: its `show` / `hide` events cannot be relied on (they
+ * did not fire on macOS). A key that failed is tried again each time: the app
+ * holding it may have let it go
+ */
+export function syncShortcuts() {
+  const all = Object.values(shortcuts)
+  const live = (shortcut: Shortcut) => shortcut.key !== '' && isShortcutLive(shortcut.action)
+  // Released first, so a key shared by two actions is free for the one now live
+  all.filter((shortcut) => !live(shortcut)).forEach(releaseShortcut)
+  all.filter(live).forEach(takeShortcut)
+}
+
+function bindShortcut(action: string, key: string) {
+  if (shortcuts[action]) releaseShortcut(shortcuts[action])
+  shortcuts[action] = { action, key, status: 'available', registeredKeys: [] }
+}
+
+/**
+ * Whether `key` is taken elsewhere, for a key not held now: briefly taking it
+ * is the only way to tell. Windows refuses a key another app holds. macOS lets
+ * two apps hold the same one, so there it only catches the keys the system
+ * keeps for itself. One held by another of this app's actions is not taken
+ */
+function heldElsewhere(key: string): boolean {
+  if (globalShortcut.isRegistered(key)) return false
+  if (!globalShortcut.register(key, () => {})) return true
+  globalShortcut.unregister(key)
+  return false
 }
 
 /** The key an action is bound to, for the tray menu to show; none if it did not register */
 export function registeredShortcut(action: string): string | undefined {
   const shortcut = shortcuts[action]
-  return shortcut?.status === ShortcutStatus.Registered ? shortcut.key : undefined
+  return shortcut?.status === 'registered' ? shortcut.key : undefined
 }
 
-ipcMain.handle('getShortcuts', () => shortcuts)
+// For the settings page, which warns of a key another app holds before it is ever needed
+ipcMain.handle('getShortcuts', (): Record<string, Shortcut> => {
+  return Object.fromEntries(
+    Object.entries(shortcuts).map(([action, shortcut]) => {
+      const untried = shortcut.status === 'available' && shortcut.key !== ''
+      const status = untried && heldElsewhere(shortcut.key) ? 'failed' : shortcut.status
+      return [action, { ...shortcut, status }]
+    })
+  )
+})
 
 ipcMain.handle(
   'initShortcuts',
   (_event, shortcuts: Record<string, { action: string; key: string }>) => {
     Object.entries(shortcuts).forEach(([action, { key }]) => {
-      registerShortcut(action, key)
+      bindShortcut(action, key)
     })
+    syncShortcuts()
   }
 )
 
 ipcMain.handle('updateShortcuts', (_event, _shortcuts: { action: string; key: string }[]) => {
   _shortcuts.forEach((shortcut) => {
     if (shortcuts[shortcut.action]?.key !== shortcut.key) {
-      registerShortcut(shortcut.action, shortcut.key)
+      bindShortcut(shortcut.action, shortcut.key)
     }
   })
+  syncShortcuts()
 })
+
+ipcMain.handle('setShortcutRecording', (_event, recording: boolean) => {
+  recordingShortcut = recording
+  syncShortcuts()
+})
+
+// The voice actions need the DashScope key
+onSettingsChanged((previous) => {
+  if (previous.dashscopeApiKey !== settings.dashscopeApiKey) syncShortcuts()
+})
+
+// Hidden, the window's place is taken by the phones watching, if any
+onMobileViewersChanged(syncShortcuts)
 
 ipcMain.handle('stopSolutionStream', () => stopAnswer())
 

@@ -78,6 +78,7 @@ src/
 │   └── mobile.ts            # 手机同步: MobileState (what phones get) + MobileSyncStatus (for the settings page)
 └── renderer/
     ├── index.html            # SPA entry
+    ├── picker.html           # The region picker's own page (entry `src/picker.tsx`)
     └── src/
         ├── main.tsx          # React root render
         ├── App.tsx           # Router + settings sync + shortcut init + Toaster
@@ -109,7 +110,8 @@ src/
         │   ├── SelectModel.tsx     # Model combobox that follows the API Base URL
         │   ├── SelectBaseURL.tsx   # API Base URL combobox (presets from lib/providers.ts)
         │   └── CustomShortcuts.tsx # Shortcut key recorder
-        ├── region-picker/    # One screen of the capture-region picker (`#/region-picker`, rendered without App)
+        ├── picker.tsx        # Entry of picker.html: the region picker alone, without App
+        ├── region-picker/    # One screen of the capture-region picker
         ├── help/             # Help page
         │   ├── index.tsx     # Quick start guide, shortcuts, toolbar, FAQ
         │   ├── Shortcuts.tsx
@@ -214,7 +216,8 @@ relay/                       # 手机同步's relay + phone page: its own packag
 - `getRegionPickerData` / `region-picker-ready` / `finish-region-picker` (the last two `send`) — a picker window fetches its frozen screen, asks to be shown once painted, and reports the result
 - `updateAppState` / `getAppState` — sync `inCoderPage`, `inConversationPage`, `inSettingsPage`; the toolbar window fetches it on load
 - `setIgnoreMouse` — set click-through from the settings page switch
-- `initShortcuts` / `getShortcuts` / `updateShortcuts` — shortcut management
+- `initShortcuts` / `getShortcuts` / `updateShortcuts` — shortcut management; `getShortcuts` also says which keys another app holds (`failed`)
+- `setShortcutRecording` — the settings page is recording a key: main releases every key meanwhile
 - `stopSolutionStream` — abort current AI stream
 - `hideMainWindow` — the header's 隐藏 and Esc after 框选识别: hide as the shortcut does, handing the keyboard back
 - `sendFollowUpQuestion` — follow-up within conversation
@@ -284,6 +287,7 @@ When enabled, the app is designed to be invisible to screen-sharing software:
 
 A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolbar` route, so the shortcut actions can be driven with the mouse instead of the keyboard:
 - Owns its own visibility state: the renderer calls `setToolbarVisible()` (main page + `showOverlayToolbar` setting), main additionally requires the main window to be visible. Never call `showInactive()` on it directly — go through `showToolbar()` / `hideToolbar()`.
+- The window exists only while `showOverlayToolbar` is on (`setToolbarEnabled()` from the settings sync): it is a renderer of its own, about 40 MB. Like the tray icon it is created by the first sync, so code reaching it must allow for no window
 - `focusable: false` so clicking a button never pulls focus away from the app underneath
 - Opacity is applied at the window level to match the main window, which applies its own via `document.body.style.opacity`
 - It is a separate renderer process, so its Zustand store is a **separate copy** that does not see changes made in the main window. Settings it needs must be pushed from main (`sync-toolbar-settings`), not read from the store.
@@ -329,7 +333,7 @@ Both windows are created with `resizable: false` — toggling Electron's native 
 - Three entry points — the settings button, the toolbar button and the `pickCaptureRegion` shortcut — all go through `pickRegion()` in `shortcuts.ts`, which applies the result to main's `settings` at once and sends `capture-region-picked` for the renderer store to persist
 - `pickRegion()` soft-hides the main window through `whilePicking()` (unless it already was), then `region-picker.ts` opens one window per screen at `screen-saver` level above the main window and toolbar, each showing a frozen capture of its screen (content protection keeps the app out of it)
 - Started from a shortcut or the toolbar, another app is active: the picker under the cursor takes focus (`app.focus({ steal: true })` on macOS) so Enter / Esc cannot land in, say, an exam page, and `acceptFirstMouse` lets the first click start a drag
-- The picker route is rendered straight from `main.tsx`, skipping `App`: a throwaway window must not sync settings or re-register shortcuts
+- The picker is a page of its own (`src/renderer/picker.html` → `picker.tsx`, a second renderer input in `electron.vite.config.ts`), skipping `App`: a throwaway window must not sync settings or re-register shortcuts, and it loads React and the picker only, not the app's markdown / KaTeX / stores
 - The pickers cover every screen, so any exit — Enter / Esc, closing one, a crashed or unresponsive renderer, a 5-minute timeout — closes them all and restores the main window
 - The dimming around the selection is four plain panels: a `clip-path` hole or a huge `box-shadow` did not paint over the full-screen image
 - A region whose screen is disconnected is kept but ignored until it comes back, so the whole screen is captured meanwhile
@@ -381,10 +385,13 @@ Material the user wants the AI to draw on — a resume, prepared Q&A, notes — 
 
 - Global shortcuts registered via Electron's `globalShortcut` API
 - Renderer stores shortcut config in Zustand (persisted); sends to main on init
+- A key is held only while its action has something to do, since a held key never reaches the app in front: `syncShortcuts()` takes the keys `isShortcutLive()` allows and releases the rest. Each action's scope is in `SHORTCUT_SCOPES` (its page, whether it is meant for the hidden window, whether it acts on the window itself, whether it needs the DashScope key); a new action needs an entry. Hidden, only `hideOrShowMainWindow` and `snipScreenshot` stay, plus the non-window actions while phones watch (手机同步). Nothing is held while the settings page records a key (`setShortcutRecording`)
+- Call `syncShortcuts()` wherever the window is shown or hidden: the main window's `show` / `hide` events did not fire on macOS. A page change, a DashScope key change and phones coming or going (`onMobileViewersChanged()`) re-sync on their own
+- An empty key is one the user cleared (Backspace while recording); `merge` keeps it cleared. `getShortcuts` reports a key another app holds as `failed`, trying an untried key briefly; macOS lets two apps hold the same key, so there it only catches the system's own
 - On Windows, `Alt`-based shortcuts also register `Ctrl+Alt` variant for compatibility
 - On Windows a held shortcut repeats at the keyboard's auto-repeat rate (Chromium registers it without `MOD_NOREPEAT`). `isKeyRepeat()` drops a press within 600ms of the previous one of the same action, so holding the keys fires once; only `REPEATABLE_ACTIONS` (move, page, opacity) keep repeating
 - Shortcut actions are string-keyed callbacks in `shortcuts.ts`
-- Default shortcuts use `platformAlt` (`Alt` on macOS, `CommandOrControl` on Windows)
+- Default shortcuts use `platformAlt` (`Alt` on macOS, `CommandOrControl` on Windows: in many Windows apps pressing Alt alone activates the menu bar). `snipScreenshot` is `Ctrl+Alt+S` on Windows, not `Ctrl+Shift+S` (另存为 nearly everywhere), since it stays held while the window is hidden
 - New actions also need a label in `settings/CustomShortcuts.tsx` and a description in `help/Shortcuts.tsx`
 - Categories: `Window Management`, `Screenshot` (截图模式 only), `Conversation` (对话模式 only), `AI` (acts on whichever mode is on screen: stop, profile, scene, transcription), `Navigation`, `Window Movement`. Only the key of a stored binding is the user's; `merge` takes the category from the code
 - Actions acting on "the current mode" check `inModePage()` (`state.ts`) and are answered by `useModePage()` on either page

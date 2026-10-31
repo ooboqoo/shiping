@@ -27,9 +27,38 @@ let toolbarSize = { width: TOOLBAR_WIDTH, height: TOOLBAR_HEIGHT }
 /**
  * Click-through alternative to the global shortcuts: a small always-on-top
  * window of buttons, glued above the main window and hidden along with it.
+ *
+ * The window itself exists only while the setting is on: it is a renderer of
+ * its own, kept for nothing by someone who never uses it. Like the tray icon
+ * it waits for the renderer's setting, so it is created by the first sync
  */
-export function createToolbarWindow(parent: BrowserWindow): void {
-  toolbarWindow = new BrowserWindow({
+export function attachToolbar(parent: BrowserWindow): void {
+  ownerWindow = parent
+  parent.on('move', syncToolbarBounds)
+  parent.on('resize', syncToolbarBounds)
+  parent.on('show', showToolbar)
+  parent.on('hide', hideToolbar)
+  parent.on('closed', () => {
+    destroyToolbarWindow()
+    ownerWindow = null
+  })
+}
+
+/** Create or destroy the window as the `showOverlayToolbar` setting says */
+export function setToolbarEnabled(enabled: boolean): void {
+  if (!enabled) destroyToolbarWindow()
+  else if (!toolbarWindow && ownerWindow && !ownerWindow.isDestroyed()) {
+    createToolbarWindow(ownerWindow)
+  }
+}
+
+function destroyToolbarWindow(): void {
+  if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.destroy()
+  toolbarWindow = null
+}
+
+function createToolbarWindow(parent: BrowserWindow): void {
+  const window = new BrowserWindow({
     width: TOOLBAR_WIDTH,
     height: TOOLBAR_HEIGHT,
     frame: false,
@@ -53,31 +82,26 @@ export function createToolbarWindow(parent: BrowserWindow): void {
       backgroundThrottling: false
     }
   })
-  ownerWindow = parent
+  toolbarWindow = window
 
-  toolbarWindow.setMenuBarVisibility(false)
-  toolbarWindow.setOpacity(toolbarOpacity)
-  toolbarWindow.setAlwaysOnTop(true, 'screen-saver', 2)
-  toolbarWindow.setVisibleOnAllWorkspaces(true, {
+  window.setMenuBarVisibility(false)
+  window.setOpacity(toolbarOpacity)
+  window.setAlwaysOnTop(true, 'screen-saver', 2)
+  window.setVisibleOnAllWorkspaces(true, {
     visibleOnFullScreen: true,
     skipTransformProcessType: true
   })
-  registerStealthWindow(toolbarWindow, '识屏 · 悬浮工具条')
-
-  parent.on('move', syncToolbarBounds)
-  parent.on('resize', syncToolbarBounds)
-  parent.on('show', showToolbar)
-  parent.on('hide', hideToolbar)
-  parent.on('closed', () => {
-    if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.close()
-    toolbarWindow = null
-    ownerWindow = null
+  registerStealthWindow(window, '识屏 · 悬浮工具条')
+  // Turned on while the main page is up, it shows once it has something to show
+  window.once('ready-to-show', showToolbar)
+  window.on('closed', () => {
+    if (toolbarWindow === window) toolbarWindow = null
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    toolbarWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/toolbar`)
+    window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/toolbar`)
   } else {
-    toolbarWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/toolbar' })
+    window.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/toolbar' })
   }
 }
 
