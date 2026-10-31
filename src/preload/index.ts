@@ -145,6 +145,14 @@ const api = {
     ipcRenderer.removeAllListeners('switch-mode')
   },
 
+  // The menu bar icon's 「设置…」
+  onOpenSettings: (callback: () => void) => {
+    ipcRenderer.on('open-settings', () => callback())
+  },
+  removeOpenSettingsListener: () => {
+    ipcRenderer.removeAllListeners('open-settings')
+  },
+
   // A screenshot was refused because this profile's model takes no images
   onVisionUnsupported: (callback: (profileId: string) => void) => {
     ipcRenderer.on('vision-unsupported', (_event, profileId: string) => callback(profileId))

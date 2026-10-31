@@ -14,6 +14,9 @@ import type { Theme } from '@/lib/theme'
 import { isMac } from '@/lib/utils/env'
 import { Field, SettingsCard } from '../components'
 
+const trayIconLabel = isMac ? '隐藏状态栏图标' : '隐藏托盘图标'
+const trayIconPlace = isMac ? '屏幕顶部状态栏' : '任务栏右下角'
+
 export function AppearanceSection() {
   const {
     theme,
@@ -24,6 +27,7 @@ export function AppearanceSection() {
     toolbarHoverDelay,
     stealthEnabled,
     hideDockIcon,
+    hideTrayIcon,
     updateSetting
   } = useSettingsStore()
   const { ignoreMouse } = useAppStore()
@@ -145,7 +149,7 @@ export function AppearanceSection() {
           {isMac && (
             <Field
               label="隐藏 Dock 图标"
-              note="开启后不在程序坞和 Cmd+Tab 切换器中显示，仅可通过快捷键唤起窗口"
+              note="开启后不在程序坞和 Cmd+Tab 切换器中显示，可通过快捷键或状态栏图标唤起窗口"
               noteLayout="stacked"
             >
               <Switch
@@ -155,6 +159,17 @@ export function AppearanceSection() {
               />
             </Field>
           )}
+          <Field
+            label={trayIconLabel}
+            note={`单击${trayIconPlace}的图标即可框选识别，右键可显示/隐藏窗口、打开设置或退出；共享整个屏幕时对方能看到这个图标，介意可隐藏`}
+            noteLayout="stacked"
+          >
+            <Switch
+              aria-label={trayIconLabel}
+              checked={hideTrayIcon}
+              onCheckedChange={(checked) => updateSetting('hideTrayIcon', checked)}
+            />
+          </Field>
           <p className="text-xs font-light leading-relaxed">
             图片和语音仅发送到您配置的 AI 或语音识别平台，不经过识屏的服务器。
           </p>

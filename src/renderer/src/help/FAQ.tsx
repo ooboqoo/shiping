@@ -1,6 +1,6 @@
 import { BookOpen } from 'lucide-react'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
-import { platformAlt } from '@/lib/utils/env'
+import { isMac, platformAlt } from '@/lib/utils/env'
 import { HelpSection } from './components'
 
 const faqs = [
@@ -75,7 +75,8 @@ const faqs = [
         隐藏窗口后应用仍在后台运行，快捷键照常可用（macOS 还可以在「设置 → 界面与隐私」隐藏 Dock
         图标）。需要时按
         <ShortcutRenderer shortcut={`${platformAlt}+Shift+S`} className="text-xs mx-1" />
-        ，在定格的屏幕画面上拖出要识别的范围，松开鼠标就发给
+        ，或单击{isMac ? '屏幕顶部状态栏' : '任务栏右下角托盘'}
+        里的识屏图标，在定格的屏幕画面上拖出要识别的范围，松开鼠标就发给
         AI，窗口随即显示出解答。这样框选只截这一次，不改变「截图区域」设置。
       </span>
     )

@@ -61,6 +61,7 @@ src/
 │   ├── save-conversation.ts # 对话模式's conversation → one Markdown file per conversation
 │   ├── transcription.ts     # DashScope WebSocket real-time speech-to-text (截图模式 text or 对话模式 sentences)
 │   ├── window-resize.ts     # Cursor-tracking resize for the frameless windows
+│   ├── tray.ts              # Tray icon (menu bar / notification area): click = 框选识别, right-click menu (`hideTrayIcon`)
 │   ├── auto-updater.ts      # New releases, announced in the window: Windows installs via electron-updater, macOS links to the page
 │   └── index.d.ts           # global.mainWindow type declaration
 ├── preload/
@@ -236,6 +237,7 @@ relay/                       # 手机同步's relay + phone page: its own packag
 - `switch-api-profile` — step the current mode's AI profile (`1` / `-1`); the list lives in the renderer store
 - `cycle-scene` — step the current mode to its next prompt scene; the renderer owns the list and syncs the new prompt back
 - `switch-mode` — show the other mode's page (shortcut / toolbar); the renderer owns the routes
+- `open-settings` — the tray menu's 设置…: main has already revealed the window
 - `vision-unsupported` — a screenshot was refused for want of image input (profile id); the renderer marks the profile text-only if nothing better is known
 - `toggle-hint-mode` — flip 对话模式 between automatic and manual hints; the renderer owns the setting
 - `conversation-utterance` / `conversation-utterance-removed` / `conversation-hint` / `conversation-hint-chunk` / `conversation-cleared` / `conversation-notice` — 对话模式 state from main
@@ -251,7 +253,7 @@ relay/                       # 手机同步's relay + phone page: its own packag
 
 | Store | File | Persisted | Key State |
 |-------|------|-----------|-----------|
-| `useSettingsStore` | `lib/store/settings.ts` | Yes (v8) | `apiProfiles`, `activeProfileId` (the one being edited), `screenshotProfileId`, `conversationProfileId`, `hasConfiguredApi`, `apiBaseURL`, `apiKey`, `apiHeaders`, `model`, `disableThinking` (mirror of the edited profile), `customModels`, `customModelsByBaseURL`, `modelByBaseURL`, `scenes` (prompt scenes, each with a `mode`), `activeSceneId` / `conversationSceneId`, `customPrompt` / `conversationPrompt` (derived from each mode's scene), `lastMode`, `conversationHintMode`, `conversationSilenceMs`, `conversationMinChars`, `conversationTranscriptHidden`, `conversationAutoSave`, `conversationSaveDir`, `opacity`, `resizable`, `showOverlayToolbar`, `toolbarHoverDelay`, `hideShortcutHints`, `screenshotDisplay`, `captureScreen`, `captureRegion`, `screenshotAutoSave`, `screenshotDir`, `codeAutoSave`, `codeSaveDir`, `codeFileBaseName`, `codeNamingMode`, `codeCopyToClipboard`, `dashscopeApiKey`, `mobileLanEnabled`, `mobileLanKey`, `mobileRelayEnabled`, `mobileRelayURL`, `mobileRelayKey`, `networkProxy` |
+| `useSettingsStore` | `lib/store/settings.ts` | Yes (v8) | `apiProfiles`, `activeProfileId` (the one being edited), `screenshotProfileId`, `conversationProfileId`, `hasConfiguredApi`, `apiBaseURL`, `apiKey`, `apiHeaders`, `model`, `disableThinking` (mirror of the edited profile), `customModels`, `customModelsByBaseURL`, `modelByBaseURL`, `scenes` (prompt scenes, each with a `mode`), `activeSceneId` / `conversationSceneId`, `customPrompt` / `conversationPrompt` (derived from each mode's scene), `lastMode`, `conversationHintMode`, `conversationSilenceMs`, `conversationMinChars`, `conversationTranscriptHidden`, `conversationAutoSave`, `conversationSaveDir`, `opacity`, `resizable`, `showOverlayToolbar`, `toolbarHoverDelay`, `hideShortcutHints`, `screenshotDisplay`, `captureScreen`, `captureRegion`, `screenshotAutoSave`, `screenshotDir`, `codeAutoSave`, `codeSaveDir`, `codeFileBaseName`, `codeNamingMode`, `codeCopyToClipboard`, `dashscopeApiKey`, `mobileLanEnabled`, `mobileLanKey`, `mobileRelayEnabled`, `mobileRelayURL`, `mobileRelayKey`, `networkProxy`, `hideDockIcon`, `hideTrayIcon` |
 | `useShortcutsStore` | `lib/store/shortcuts.ts` | Yes (v5) | `shortcuts` (action → key mapping with categories); `merge` adds new default actions on every load, so a new shortcut needs no `version` bump |
 | `useSolutionStore` | `lib/store/solution.ts` | No | `isLoading`, `solutionChunks`, `reasoningRounds`, `liveRound`, `roundUi`, `screenshotData`, `errorMessage`, `durationMs` |
 | `useTranscriptionStore` | `lib/store/transcription.ts` | No | `isTranscribing`, `transcriptionText`, `errorMessage` |
@@ -266,7 +268,7 @@ Adding a settings key needs no `version` bump: zustand shallow-merges the persis
 
 ### Window Stealth
 
-`stealthEnabled` defaults to `true`, is persisted by the renderer, and can be toggled in 「界面与隐私 → 隐身模式」 without restarting. `src/main/window-privacy.ts` registers the main window, toolbar and region pickers so current and newly created windows follow it. Disabling restores capture visibility and window titles, plus the main window's taskbar / Mission Control entry; `hideDockIcon` remains independent. Startup settings sync must not overwrite a persisted `false` with main's `true` default.
+`stealthEnabled` defaults to `true`, is persisted by the renderer, and can be toggled in 「界面与隐私 → 隐身模式」 without restarting. `src/main/window-privacy.ts` registers the main window, toolbar and region pickers so current and newly created windows follow it. Disabling restores capture visibility and window titles, plus the main window's taskbar / Mission Control entry; `hideDockIcon` and `hideTrayIcon` remain independent. Startup settings sync must not overwrite a persisted `false` with main's `true` default.
 
 When enabled, the app is designed to be invisible to screen-sharing software:
 - `BrowserWindow` options: `transparent: true`, `frame: false`, `skipTaskbar: true`
@@ -423,6 +425,15 @@ The app was renamed from 截屏解题助手 (`interview-coder-cn`) to 识屏 (`s
 - The certificate keeps the designated requirement (`identifier "com.electron.app" and certificate leaf = H"…"`) the same across releases, so a user grants 屏幕与系统音频录制 once. An ad-hoc signature would tie it to each build's hash. A new certificate or a new `appId` makes every user grant it again
 - CI imports the certificate from the `MAC_CERT_P12_BASE64` / `MAC_CERT_PASSWORD` secrets into a temporary keychain (`MAC_SIGN_KEYCHAIN`), which must be on the user search list: codesign on macOS 26 finds no identity elsewhere, `--keychain` or not. The build fails without the certificate; a local build without it is signed ad-hoc
 - To see what TCC decides: `log stream --predicate 'subsystem == "com.apple.TCC" OR process == "replayd"'`, then `AUTHREQ_SUBJECT` / `AUTHREQ_RESULT` for the process in question
+
+### Tray Icon
+
+`src/main/tray.ts`: the macOS menu bar icon and the Windows notification-area icon, there mainly for 框选识别, so the app can stay hidden and still be used with the mouse alone:
+- A click runs `snipScreenshot`, exactly as the shortcut does (`runShortcutAction()`). Off 截图模式's page the shortcut does nothing, so the click opens the menu instead, where the item says why it is disabled
+- Right-click (and Control-click on macOS) opens the menu, rebuilt on every opening: 框选识别, 显示 / 隐藏窗口 (`hideOrShowMainWindow`; a soft-hidden window counts as hidden, `isMainWindowShown()`), 设置… (reveals the window and sends `open-settings`; the renderer owns the routes), 退出识屏. Items show their registered shortcut (`registeredShortcut()`, `registerAccelerator: false`)
+- Shown by default, hidden with `hideTrayIcon` (「界面与隐私」), applied live from the settings sync. The persisted value lives in the renderer, so like the Dock icon (main starts it hidden, see `index.ts`) the tray is only created by the first sync: it never flashes for someone who hides it
+- No tooltip: it is drawn outside content protection. The icon itself is not covered either, so it shows when the whole screen is shared; the setting's note says so
+- macOS uses a template image (`resources/trayTemplate.png` + `@2x`, drawn from `build/tray.svg`), tinted by the system for a light or dark menu bar; Windows uses `resources/tray.ico`, the 16–64 px entries of `build/icon.ico`
 
 ### Mouse Click-through
 

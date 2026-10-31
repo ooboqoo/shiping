@@ -220,9 +220,15 @@ function showMainWindow(window: BrowserWindow) {
 }
 
 /** Undo `hideOrShowMainWindow`'s hiding, whichever way it hid the window */
-function revealMainWindow(window: BrowserWindow) {
+export function revealMainWindow(window: BrowserWindow) {
   if (isWindowSoftHidden) restoreSoftHiddenWindow(window)
   else if (!window.isVisible()) showMainWindow(window)
+}
+
+/** On screen: neither hidden nor parked off-screen by soft-hide, which still counts as visible */
+export function isMainWindowShown(): boolean {
+  const mainWindow = global.mainWindow
+  return !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !isWindowSoftHidden
 }
 
 function keepWindowInFront(window: BrowserWindow) {
@@ -810,6 +816,11 @@ const callbacks: Record<string, () => void> = {
   }
 }
 
+/** The tray icon runs these as if their shortcut had been pressed */
+export function runShortcutAction(action: 'snipScreenshot' | 'hideOrShowMainWindow'): void {
+  callbacks[action]()
+}
+
 const clickableActions = new Set([
   'takeScreenshot',
   'appendScreenshot',
@@ -890,6 +901,12 @@ function registerShortcut(action: string, key: string) {
     status: registeredKeys.length ? ShortcutStatus.Registered : ShortcutStatus.Failed,
     registeredKeys
   }
+}
+
+/** The key an action is bound to, for the tray menu to show; none if it did not register */
+export function registeredShortcut(action: string): string | undefined {
+  const shortcut = shortcuts[action]
+  return shortcut?.status === ShortcutStatus.Registered ? shortcut.key : undefined
 }
 
 ipcMain.handle('getShortcuts', () => shortcuts)

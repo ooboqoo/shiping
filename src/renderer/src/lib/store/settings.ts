@@ -299,6 +299,8 @@ interface Settings {
   /** Hide app windows from screenshots and screen sharing */
   stealthEnabled: boolean
   hideDockIcon: boolean
+  /** macOS: no icon in the menu bar */
+  hideTrayIcon: boolean
 
   audioInputDeviceId: string
   audioOutputDeviceId: string
@@ -430,6 +432,7 @@ const defaultSettings: Settings = {
 
   stealthEnabled: true,
   hideDockIcon: false,
+  hideTrayIcon: false,
 
   audioInputDeviceId: '',
   audioOutputDeviceId: '',

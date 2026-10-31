@@ -141,6 +141,8 @@ export const settings = {
   /** Hide app windows from screenshots and screen sharing; the renderer persists this preference */
   stealthEnabled: true,
   hideDockIcon: false,
+  /** The macOS menu bar icon, see tray.ts */
+  hideTrayIcon: false,
   audioInputDeviceId: '',
   audioOutputDeviceId: ''
 }

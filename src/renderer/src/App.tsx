@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { HashRouter, Routes, Route, useLocation } from 'react-router'
+import { HashRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
 import { Toaster, toast } from 'sonner'
 import CoderPage from '@/coder'
 import ConversationPage from '@/conversation'
@@ -96,6 +96,7 @@ export default function App() {
       <HashRouter>
         <ToolbarVisibilityController />
         <WindowResizeController />
+        <OpenSettingsController />
         <Routes>
           <Route index element={<CoderPage />} />
           <Route path="conversation" element={<ConversationPage />} />
@@ -117,6 +118,18 @@ function WindowResizeController() {
 
   if (location.pathname === '/toolbar') return null
   return <WindowResizeHandles enabled={resizable} />
+}
+
+/** The menu bar icon's 「设置…」: main shows the window, the routes are ours */
+function OpenSettingsController() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    window.api.onOpenSettings(() => navigate('/settings'))
+    return () => window.api.removeOpenSettingsListener()
+  }, [navigate])
+
+  return null
 }
 
 function ToolbarVisibilityController() {
