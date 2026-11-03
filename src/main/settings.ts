@@ -49,9 +49,18 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   }
 })
 
+/** What applyDockVisibility() last asked for; null before the first call */
+let dockHidden: boolean | null = null
+
 /** Show/hide the macOS dock icon. No-op on other platforms. */
 export function applyDockVisibility(hidden: boolean): void {
   if (process.platform !== 'darwin') return
+  // Every settings change syncs `hideDockIcon` again. dock.show() on an active
+  // app hands activation to the Dock and takes it back a second later, which
+  // drops an input method's composition: typing Chinese in the settings page
+  // lost every syllable. So only an actual change touches the Dock
+  if (hidden === dockHidden) return
+  dockHidden = hidden
   if (hidden) {
     app.dock?.hide()
   } else {
