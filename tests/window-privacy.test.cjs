@@ -29,7 +29,8 @@ test('settings toggle applies to all windows, survives restore, and reaches late
   const handlers = new Map()
   const mocks = {
     electron: { ipcMain: { handle: (channel, fn) => handlers.set(channel, fn) } },
-    './toolbar-window': {}
+    './toolbar-window': {},
+    './mini-bar-window': {}
   }
   const cache = new Map()
   const privacy = load('src/main/window-privacy.ts', mocks, cache)
@@ -74,6 +75,69 @@ test('settings toggle applies to all windows, survives restore, and reaches late
   assert.equal(toolbar.title, '')
   assert.equal(main.skipTaskbar, true)
   assert.equal(picker.protection.length, pickerCalls)
+})
+
+test('mini bar follows stealth changes before creation and after hiding and showing', (t) => {
+  const noop = () => {}
+  t.mock.method(global, 'setInterval', () => 1)
+  t.mock.method(global, 'clearInterval', noop)
+  const created = []
+  class MiniWindow extends Window {
+    constructor() {
+      super()
+      created.push(this)
+    }
+    setMenuBarVisibility = noop
+    setOpacity = noop
+    setAlwaysOnTop = noop
+    setVisibleOnAllWorkspaces = noop
+    loadFile = noop
+    setBounds(bounds) {
+      this.bounds = bounds
+    }
+    getPosition() {
+      return [this.bounds?.x ?? 0, this.bounds?.y ?? 0]
+    }
+    showInactive() {
+      this.visible = true
+    }
+    isVisible() {
+      return this.visible
+    }
+    hide() {
+      this.visible = false
+    }
+    moveTop = noop
+  }
+  const mocks = {
+    electron: {
+      BrowserWindow: MiniWindow,
+      ipcMain: { handle: noop },
+      screen: {
+        getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })
+      }
+    },
+    '@electron-toolkit/utils': { is: { dev: false } }
+  }
+  const cache = new Map()
+  const privacy = load('src/main/window-privacy.ts', mocks, cache)
+  const bar = load('src/main/mini-bar-window.ts', mocks, cache)
+  privacy.setStealthEnabled(false)
+  bar.createMiniBarWindow(new Window())
+  const mini = created.at(-1)
+  assert.equal(mini.protection.at(-1), false)
+  assert.equal(mini.title, '识屏 · 极简悬浮条')
+  bar.showMiniBar([100, 100])
+  assert.equal(mini.protection.at(-1), false)
+  privacy.setStealthEnabled(true)
+  assert.equal(mini.protection.at(-1), true)
+  assert.equal(mini.title, '')
+  bar.hideMiniBar()
+  privacy.setStealthEnabled(false)
+  bar.showMiniBar()
+  assert.equal(mini.protection.at(-1), false)
+  assert.equal(mini.title, '识屏 · 极简悬浮条')
+  bar.hideMiniBar()
 })
 
 test('existing installations default to stealth on and a saved opt-out survives restart', () => {
