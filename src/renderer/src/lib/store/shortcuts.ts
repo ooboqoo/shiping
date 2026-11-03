@@ -83,6 +83,13 @@ const defaultShortcuts: Record<string, Omit<Shortcut, 'defaultKey'>> = {
     key: `${platformAlt}+Shift+Enter`,
     category: 'Screenshot'
   },
+  snipAppendScreenshot: {
+    action: 'snipAppendScreenshot',
+    // Held while the window is hidden, like 框选识别's key next to it. On
+    // Windows it is also QQ's screenshot key: whichever app starts first gets it
+    key: isMac ? 'Alt+Shift+A' : 'CommandOrControl+Alt+A',
+    category: 'Screenshot'
+  },
   pickCaptureRegion: {
     action: 'pickCaptureRegion',
     key: `${platformAlt}+Shift+R`,

@@ -170,8 +170,10 @@ export default function RegionPicker() {
         >
           {oneShot ? (
             <>
-              <span>拖动鼠标框选要识别的区域</span>
-              <span className="text-xs text-neutral-400">松开鼠标即截图发给 AI，Esc 取消</span>
+              <span>{data.append ? '拖动鼠标框选要追加的区域' : '拖动鼠标框选要识别的区域'}</span>
+              <span className="text-xs text-neutral-400">
+                {data.append ? '松开鼠标即追加到当前对话' : '松开鼠标即截图发给 AI'}，Esc 取消
+              </span>
             </>
           ) : (
             <>

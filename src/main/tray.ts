@@ -5,6 +5,7 @@ import windowsIconPath from '../../resources/tray.ico?asset&asarUnpack'
 import { settings, onSettingsChanged } from './settings'
 import { state } from './state'
 import {
+  hasScreenshotConversation,
   isMainWindowShown,
   registeredShortcut,
   revealMainWindow,
@@ -15,9 +16,9 @@ import {
  * The tray icon (macOS menu bar, Windows notification area). It is there for
  * 框选识别: a click starts it like the shortcut, so the app can stay hidden in
  * the background and still be used with the mouse alone. Right-click (or
- * Control-click on macOS) opens a menu with 框选识别 too, show / hide, the
- * settings and quit. Both platforms behave alike: a left click is the primary
- * action on Windows as well, and the menu is its usual right-click.
+ * Control-click on macOS) opens a menu with 框选识别 too, 框选追加截图, show /
+ * hide, the settings and quit. Both platforms behave alike: a left click is
+ * the primary action on Windows as well, and the menu is its usual right-click.
  *
  * Shown by default, but like the Dock icon it waits for the renderer's
  * `hideTrayIcon`: main does not know the persisted value at startup, and a
@@ -34,6 +35,12 @@ function openSettings(): void {
   mainWindow.webContents.send('open-settings')
 }
 
+/** 框选追加截图's item; without a conversation it would only repeat 框选识别, so it says why it is off */
+function snipAppendLabel(): string {
+  if (!state.inCoderPage) return '框选追加截图（需在截图模式下）'
+  return hasScreenshotConversation() ? '框选追加截图' : '框选追加截图（当前没有对话）'
+}
+
 /** Built on every opening, so it reflects the window and the shortcuts as they are now */
 function buildMenu(): Menu {
   return Menu.buildFromTemplate([
@@ -44,6 +51,13 @@ function buildMenu(): Menu {
       accelerator: registeredShortcut('snipScreenshot'),
       registerAccelerator: false,
       click: () => runShortcutAction('snipScreenshot')
+    },
+    {
+      label: snipAppendLabel(),
+      enabled: state.inCoderPage && hasScreenshotConversation(),
+      accelerator: registeredShortcut('snipAppendScreenshot'),
+      registerAccelerator: false,
+      click: () => runShortcutAction('snipAppendScreenshot')
     },
     { type: 'separator' },
     {

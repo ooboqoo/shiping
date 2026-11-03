@@ -42,6 +42,11 @@ export function AppStatusBar() {
   // dialog open (Esc closes that instead)
   const canDismiss =
     snipSession && !!hasActiveConversation && !isReceivingSolution && !hideShortcutHints
+  // Come here by 框选识别, the next part is likelier framed too; unless that key was cleared
+  const append =
+    snipSession && shortcuts.snipAppendScreenshot?.key
+      ? { key: shortcuts.snipAppendScreenshot.key, label: '框选追加截图' }
+      : { key: shortcuts.appendScreenshot.key, label: '追加截图' }
 
   useEffect(() => {
     if (!canDismiss || isDialogOpen) return
@@ -129,10 +134,10 @@ export function AppStatusBar() {
               <>
                 <span>
                   <ShortcutRenderer
-                    shortcut={shortcuts.appendScreenshot.key}
+                    shortcut={append.key}
                     className="inline-block scale-75 text-xs border border-current bg-transparent py-0 px-1 ml-1"
                   />
-                  追加截图
+                  {append.label}
                 </span>
                 <span>
                   <ShortcutRenderer

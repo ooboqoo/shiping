@@ -20,6 +20,8 @@ export type PickerPurpose = 'region' | 'screenshot'
 /** What a picker window draws on: its screen, frozen, and the region already set there */
 export interface RegionPickerData {
   purpose: PickerPurpose
+  /** A one-off screenshot added to the current conversation instead of starting one */
+  append: boolean
   /** JPEG data URL of the screen as it was when picking started */
   image: string
   /** The saved region, when it is on this screen */
@@ -56,6 +58,7 @@ const PICKER_SHOW_TIMEOUT = 10 * 1000
 let active = false
 let pickers: Picker[] = []
 let purpose: PickerPurpose = 'region'
+let appending = false
 let savedRegion: CaptureRegion | null = null
 let settle: ((picked: Picked | null) => void) | null = null
 let timeout: NodeJS.Timeout | null = null
@@ -74,11 +77,11 @@ export async function pickCaptureRegion(
  * Let the user drag out an area and screenshot just that, once, leaving the
  * capture region as it is. The screenshot is cut from the frozen screen the
  * user dragged on, so it holds exactly what they saw, even a menu or tooltip
- * that closed when the picker took focus. Resolves with base64 PNG, or null if
- * cancelled.
+ * that closed when the picker took focus. `append` only changes what the page
+ * says the screenshot is for. Resolves with base64 PNG, or null if cancelled.
  */
-export async function pickScreenshot(): Promise<string | null> {
-  const picked = await pick('screenshot', null)
+export async function pickScreenshot({ append = false } = {}): Promise<string | null> {
+  const picked = await pick('screenshot', null, append)
   return picked && cropScreenshot(picked.picker.capture, picked.picker.display, picked.region)
 }
 
@@ -87,7 +90,11 @@ export async function pickScreenshot(): Promise<string | null> {
  * so the user picks from exactly what a screenshot will see (the app's own
  * windows are left out by content protection).
  */
-async function pick(as: PickerPurpose, current: CaptureRegion | null): Promise<Picked | null> {
+async function pick(
+  as: PickerPurpose,
+  current: CaptureRegion | null,
+  append = false
+): Promise<Picked | null> {
   if (active) return null
   active = true
 
@@ -108,6 +115,7 @@ async function pick(as: PickerPurpose, current: CaptureRegion | null): Promise<P
   return new Promise((resolve) => {
     settle = resolve
     purpose = as
+    appending = append
     savedRegion = current
     pickers = displays.flatMap((display) => {
       const source = findScreenSource(sources, display)
@@ -211,6 +219,7 @@ ipcMain.handle('getRegionPickerData', (event): RegionPickerData | null => {
   const displayId = String(picker.display.id)
   return {
     purpose,
+    append: appending,
     image: picker.image,
     region: savedRegion?.displayId === displayId ? savedRegion : null,
     ...settingsResolution(picker.display)

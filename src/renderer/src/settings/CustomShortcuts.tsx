@@ -144,7 +144,12 @@ export function CustomShortcuts() {
             shortcut="appendScreenshot"
           />
           <Shortcut
-            label="框选截图区域"
+            label="框选追加截图"
+            description="拖出一块区域，松开鼠标即追加到当前对话（没有对话时同框选识别）；只截这一次，不改变截图区域"
+            shortcut="snipAppendScreenshot"
+          />
+          <Shortcut
+            label="设置截图区域"
             description="重新框选截图时只截的区域，Enter 确认、Esc 取消"
             shortcut="pickCaptureRegion"
           />

@@ -57,7 +57,8 @@ const faqs = [
     question: '只想截屏幕上的一块区域（比如题干）？',
     answer: (
       <span>
-        在「设置 → 截图模式 → 截图区域」中点「框选区域」，也可以点悬浮工具条上的框选按钮，或按下
+        在「设置 → 截图模式 →
+        截图区域」中点「框选区域」，也可以点悬浮工具条上的「设置截图区域」按钮，或按下
         <ShortcutRenderer shortcut={`${platformAlt}+Shift+R`} className="text-xs mx-1" />
         。在定格的屏幕画面上拖出要截的范围，按 Enter
         或双击确认。之后每次截图（包括追加截图）都只截这块区域，AI
@@ -73,7 +74,7 @@ const faqs = [
         可以。按
         <ShortcutRenderer shortcut={`${platformAlt}+H`} className="text-xs mx-1" />
         隐藏窗口后应用仍在后台运行（macOS 还可以在「设置 → 界面与隐私」隐藏 Dock
-        图标）。隐藏期间只占用「隐藏/显示窗口」和「框选识别」两个快捷键，其余快捷键交还给其他软件，窗口显示后自动恢复（打开了手机同步、有手机在看时，截图、翻页等也照常可用）。需要时按
+        图标）。隐藏期间只占用「隐藏/显示窗口」「框选识别」「框选追加截图」三个快捷键，其余快捷键交还给其他软件，窗口显示后自动恢复（打开了手机同步、有手机在看时，截图、翻页等也照常可用）。需要时按
         <ShortcutRenderer
           shortcut={isMac ? 'Alt+Shift+S' : 'CommandOrControl+Alt+S'}
           className="text-xs mx-1"
@@ -81,8 +82,12 @@ const faqs = [
         ，或单击{isMac ? '屏幕顶部状态栏' : '任务栏右下角托盘'}
         里的识屏图标，在定格的屏幕画面上拖出要识别的范围，松开鼠标就发给
         AI，窗口随即显示出解答。看完按 Esc 即可隐藏窗口，键盘回到原来的应用（底部出现「Esc
-        隐藏窗口」提示时 Esc 才有效，切到别的应用后 Esc
-        不再作用于本工具）。这样框选只截这一次，不改变「截图区域」设置。
+        隐藏窗口」提示时 Esc 才有效，切到别的应用后 Esc 不再作用于本工具）。题目还有下一部分时按
+        <ShortcutRenderer
+          shortcut={isMac ? 'Alt+Shift+A' : 'CommandOrControl+Alt+A'}
+          className="text-xs mx-1"
+        />
+        框选追加截图（右键图标的菜单里也有），框出的这块会接在当前对话后面一起解答。这样框选只截这一次，不改变「截图区域」设置。
       </span>
     )
   },

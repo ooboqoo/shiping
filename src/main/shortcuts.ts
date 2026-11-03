@@ -540,7 +540,9 @@ async function runAnswer(
     if (streamContext.reason !== 'new-request') {
       reportDuration()
     }
-    if (showLoading) send('ai-loading-end')
+    // A newer request took over and owns the spinner now. It started before
+    // this one wound down, so ending it here would clear the new one's
+    if (showLoading && !currentStreamContext) send('ai-loading-end')
   }
 }
 
@@ -589,6 +591,61 @@ async function startScreenshotConversation(mainWindow: BrowserWindow, screenshot
     mainWindow,
     streamContext,
     (signal) => getSolutionStream(conversationMessages, signal),
+    (answer) => {
+      if (!answer) return
+      conversationMessages.push({ role: 'assistant', content: answer })
+      // 答案已经写完，才处理代码（中途停止或报错不会走到这里）
+      handleGeneratedCode(answer)
+    },
+    { showLoading: true }
+  )
+}
+
+/** Add a screenshot to the current conversation, with the transcription text not yet sent */
+async function appendToConversation(mainWindow: BrowserWindow, screenshotData: string) {
+  saveScreenshotToDisk(screenshotData)
+  const transcriptionText = getTranscriptionText()
+  if (transcriptionText) {
+    clearTranscriptionText()
+    mainWindow.webContents.send('transcription-cleared')
+  }
+  // Append new image message to conversation
+  conversationMessages.push({
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: transcriptionText
+          ? `这是下一部分截图和语音转录内容：\n${transcriptionText}\n请结合之前所有截图和分析，继续分析解答，不要遗漏任何信息。`
+          : '这是下一部分截图，请结合之前所有截图和分析，继续分析解答，不要遗漏任何信息。'
+      },
+      {
+        type: 'image',
+        image: screenshotData
+      }
+    ]
+  })
+
+  const streamContext = beginStream()
+
+  recentScreenshots.push(screenshotData)
+  recentScreenshots = recentScreenshots.slice(-5) // 限5张
+  screenshotCount += 1
+  mainWindow.webContents.send('screenshot-taken', screenshotData)
+  mainWindow.webContents.send('screenshots-updated', recentScreenshots, screenshotCount)
+  updateMobileAnswer({ screenshots: screenshotCount })
+  if (!hasAppendSeparator) {
+    sendAnswerChunk(mainWindow, '\n\n---\n\n')
+    hasAppendSeparator = true
+  } else {
+    sendAnswerChunk(mainWindow, '\n\n')
+  }
+  // The appended screenshot gets its own reasoning, shown in its own block
+  mainWindow.webContents.send('reasoning-round-start')
+  await runAnswer(
+    mainWindow,
+    streamContext,
+    (signal) => getGeneralStream(conversationMessages, signal),
     (answer) => {
       if (!answer) return
       conversationMessages.push({ role: 'assistant', content: answer })
@@ -714,58 +771,38 @@ const callbacks: Record<string, () => void> = {
     // Overtaken by a newer screenshot, or stopped, while capturing
     if (requestId !== screenshotRequestId) return
     if (!screenshotData || mainWindow.isDestroyed()) return
+    await appendToConversation(mainWindow, screenshotData)
+  },
 
-    saveScreenshotToDisk(screenshotData)
-    const transcriptionText = getTranscriptionText()
-    if (transcriptionText) {
-      clearTranscriptionText()
-      mainWindow.webContents.send('transcription-cleared')
+  /**
+   * Append to the current conversation an area the user drags out: the
+   * 追加截图 of 框选识别, from its shortcut or the tray menu. Unlike `appendScreenshot` an answer
+   * still streaming is left alone until the drag ends: a pick takes seconds
+   * and may be cancelled, and an answer that finishes meanwhile joins the
+   * conversation ahead of the new screenshot.
+   */
+  snipAppendScreenshot: async () => {
+    const mainWindow = global.mainWindow
+    if (!mainWindow || mainWindow.isDestroyed() || !state.inCoderPage) return
+    if (!screenshotProfileReady(mainWindow)) return
+
+    // Nothing to append to: start one, like `appendScreenshot` does
+    if (conversationMessages.length === 0) {
+      callbacks.snipScreenshot()
+      return
     }
-    // Append new image message to conversation
-    conversationMessages.push({
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: transcriptionText
-            ? `这是下一部分截图和语音转录内容：\n${transcriptionText}\n请结合之前所有截图和分析，继续分析解答，不要遗漏任何信息。`
-            : '这是下一部分截图，请结合之前所有截图和分析，继续分析解答，不要遗漏任何信息。'
-        },
-        {
-          type: 'image',
-          image: screenshotData
-        }
-      ]
-    })
 
-    const streamContext = beginStream()
-
-    recentScreenshots.push(screenshotData)
-    recentScreenshots = recentScreenshots.slice(-5) // 限5张
-    screenshotCount += 1
-    mainWindow.webContents.send('screenshot-taken', screenshotData)
-    mainWindow.webContents.send('screenshots-updated', recentScreenshots, screenshotCount)
-    updateMobileAnswer({ screenshots: screenshotCount })
-    if (!hasAppendSeparator) {
-      sendAnswerChunk(mainWindow, '\n\n---\n\n')
-      hasAppendSeparator = true
-    } else {
-      sendAnswerChunk(mainWindow, '\n\n')
-    }
-    // The appended screenshot gets its own reasoning, shown in its own block
-    mainWindow.webContents.send('reasoning-round-start')
-    await runAnswer(
-      mainWindow,
-      streamContext,
-      (signal) => getGeneralStream(conversationMessages, signal),
-      (answer) => {
-        if (!answer) return
-        conversationMessages.push({ role: 'assistant', content: answer })
-        // 答案已经写完，才处理代码（中途停止或报错不会走到这里）
-        handleGeneratedCode(answer)
-      },
-      { showLoading: true }
-    )
+    const screenshotData = await whilePicking(mainWindow, () => pickScreenshot({ append: true }))
+    if (!screenshotData || mainWindow.isDestroyed()) return
+    revealMainWindow(mainWindow)
+    // The picker took the keyboard from the app in front; as after 框选识别 the
+    // window keeps it, so Esc hides it
+    mainWindow.focus()
+    setSnipSession(true)
+    startTiming()
+    // A screenshot still being captured from before the drag ended loses to this one
+    screenshotRequestId++
+    await appendToConversation(mainWindow, screenshotData)
   },
 
   // Stop current AI solution stream, or 对话模式's hints
@@ -897,8 +934,15 @@ const callbacks: Record<string, () => void> = {
 }
 
 /** The tray icon runs these as if their shortcut had been pressed */
-export function runShortcutAction(action: 'snipScreenshot' | 'hideOrShowMainWindow'): void {
+export function runShortcutAction(
+  action: 'snipScreenshot' | 'snipAppendScreenshot' | 'hideOrShowMainWindow'
+): void {
   callbacks[action]()
+}
+
+/** Whether 截图模式 has a conversation to append a screenshot to */
+export function hasScreenshotConversation(): boolean {
+  return conversationMessages.length > 0
 }
 
 const clickableActions = new Set([
@@ -943,6 +987,7 @@ const SHORTCUT_SCOPES: Record<
   decreaseOpacity: { page: 'mode', window: true },
   takeScreenshot: { page: 'screenshot' },
   snipScreenshot: { page: 'screenshot', hidden: true },
+  snipAppendScreenshot: { page: 'screenshot', hidden: true },
   appendScreenshot: { page: 'screenshot' },
   pickCaptureRegion: { page: 'any' },
   generateHint: { page: 'conversation' },
@@ -977,7 +1022,7 @@ let recordingShortcut = false
  * Whether an action's key is held now. A held key never reaches the app in
  * front, so each is held only while its action has something to do: on its
  * own page, and with the window shown. Hidden, the app lives in the background
- * and keeps only the keys meant for that (show it again, 框选识别), unless
+ * and keeps only the keys meant for that (show it again, 框选识别 / 追加), unless
  * phones are watching (手机同步): their screen stands in for the window, so
  * the actions that do not act on the window itself stay
  */
