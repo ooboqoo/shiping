@@ -6,6 +6,7 @@ import { buildRequestHeaders } from '../shared/request-headers'
 import { createThinkingOffFetch } from './thinking'
 import { apiFetch } from './api-fetch'
 import { getKnowledgePrompt } from './knowledge'
+import { getExternalReference, withReference } from './external-knowledge'
 import type { StreamChunk } from './stream'
 
 // The system prompts are fully managed by the renderer (prompt scenes in the
@@ -60,29 +61,40 @@ async function* streamChunks(
   }
 }
 
-function streamWith(
+/**
+ * `query` is what this round asks in words (a follow-up, the transcription,
+ * the other side's sentences), for the 外部知识库 to search with; its
+ * passages are awaited before the model is asked, and stay out of `messages`
+ */
+async function* streamWith(
   mode: AppMode,
   messages: ModelMessage[],
   abortSignal: AbortSignal | undefined,
-  extraSystem?: string
-) {
+  { query, extraSystem }: { query?: string; extraSystem?: string } = {}
+): AsyncIterable<StreamChunk> {
+  const reference = await getExternalReference(mode, query, abortSignal)
   const profile = getModeProfile(mode)
   const openai = createProvider(profile)
 
   const { fullStream } = streamText({
     model: openai.chatModel(getModel(profile)),
     system: getSystemPrompt(mode, extraSystem),
-    messages,
+    messages: withReference(messages, reference),
     abortSignal,
     onError: (err) => {
       throw err.error ?? err
     }
   })
-  return streamChunks(fullStream)
+  yield* streamChunks(fullStream)
 }
 
-export function getSolutionStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
-  return streamWith('screenshot', messages, abortSignal)
+/** `query`: the transcription sent with the screenshot, if any */
+export function getSolutionStream(
+  messages: ModelMessage[],
+  abortSignal?: AbortSignal,
+  query?: string
+) {
+  return streamWith('screenshot', messages, abortSignal, { query })
 }
 
 export function getFollowUpStream(
@@ -103,19 +115,25 @@ export function getFollowUpStream(
       ]
     }
   ]
-  return streamWith('screenshot', updatedMessages, abortSignal)
+  return streamWith('screenshot', updatedMessages, abortSignal, { query: userQuestion })
 }
 
-export function getGeneralStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
-  return streamWith(
-    'screenshot',
-    messages,
-    abortSignal,
-    '注意：如果有多张截图，请结合所有截图内容进行完整分析，不要遗漏任何部分。'
-  )
+/** `query`: the transcription sent with the appended screenshot, if any */
+export function getGeneralStream(
+  messages: ModelMessage[],
+  abortSignal?: AbortSignal,
+  query?: string
+) {
+  return streamWith('screenshot', messages, abortSignal, {
+    query,
+    extraSystem: '注意：如果有多张截图，请结合所有截图内容进行完整分析，不要遗漏任何部分。'
+  })
 }
 
-/** 对话模式: a hint for what the other side just said, with the conversation profile */
-export function getHintStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
-  return streamWith('conversation', messages, abortSignal)
+/**
+ * 对话模式: a hint for what the other side just said, with the conversation
+ * profile. `query`: those sentences, for the 外部知识库
+ */
+export function getHintStream(messages: ModelMessage[], abortSignal?: AbortSignal, query?: string) {
+  return streamWith('conversation', messages, abortSignal, { query })
 }

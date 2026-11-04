@@ -590,7 +590,7 @@ async function startScreenshotConversation(mainWindow: BrowserWindow, screenshot
   await runAnswer(
     mainWindow,
     streamContext,
-    (signal) => getSolutionStream(conversationMessages, signal),
+    (signal) => getSolutionStream(conversationMessages, signal, transcriptionText),
     (answer) => {
       if (!answer) return
       conversationMessages.push({ role: 'assistant', content: answer })
@@ -645,7 +645,7 @@ async function appendToConversation(mainWindow: BrowserWindow, screenshotData: s
   await runAnswer(
     mainWindow,
     streamContext,
-    (signal) => getGeneralStream(conversationMessages, signal),
+    (signal) => getGeneralStream(conversationMessages, signal, transcriptionText),
     (answer) => {
       if (!answer) return
       conversationMessages.push({ role: 'assistant', content: answer })

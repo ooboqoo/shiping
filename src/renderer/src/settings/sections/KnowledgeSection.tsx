@@ -34,6 +34,7 @@ import {
   type KnowledgeImportResult
 } from '@/lib/knowledge'
 import { SettingsCard } from '../components'
+import { ExternalKnowledgeCard } from '../ExternalKnowledgeCard'
 
 const MODES: { mode: AppMode; label: string }[] = [
   { mode: 'screenshot', label: '截图' },
@@ -129,100 +130,105 @@ export function KnowledgeSection() {
   }
 
   return (
-    <div className="relative" {...dropHandlers}>
-      <SettingsCard Icon={LibraryBig} title="资料库">
-        <p className="-mt-2 mb-4 text-xs font-light">
-          导入简历、准备好的问答、笔记等资料，AI
-          作答时会优先参考；每份资料可以分别选择用于截图模式、对话模式。资料只保存在本机，但会随每次请求一起发给该模式使用的
-          AI 平台
-        </p>
+    <>
+      <div className="relative" {...dropHandlers}>
+        <SettingsCard Icon={LibraryBig} title="资料库">
+          <p className="-mt-2 mb-4 text-xs font-light">
+            导入简历、准备好的问答、笔记等资料，AI
+            作答时会优先参考；每份资料可以分别选择用于截图模式、对话模式。资料只保存在本机，但会随每次请求一起发给该模式使用的
+            AI 平台
+          </p>
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            onClick={async () => handleImport(await window.api.pickKnowledgeFiles())}
-          >
-            <FileUp className="h-4 w-4" />
-            导入文件
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="bg-white"
-            onClick={() => setEditing('new')}
-          >
-            <Plus className="h-4 w-4" />
-            新建文本
-          </Button>
-          <span className="text-xs font-light">
-            支持 PDF、Word（.docx）、Markdown、TXT，也可以把文件拖到这里（选择弹窗可能被本窗口遮挡）
-          </span>
-        </div>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={async () => handleImport(await window.api.pickKnowledgeFiles())}
+            >
+              <FileUp className="h-4 w-4" />
+              导入文件
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-white"
+              onClick={() => setEditing('new')}
+            >
+              <Plus className="h-4 w-4" />
+              新建文本
+            </Button>
+            <span className="text-xs font-light">
+              支持
+              PDF、Word（.docx）、Markdown、TXT，也可以把文件拖到这里（选择弹窗可能被本窗口遮挡）
+            </span>
+          </div>
 
-        {docs && docs.length === 0 && (
-          <div className="rounded-md border border-dashed border-gray-400 px-4 py-6 text-center text-sm text-gray-600">
-            还没有资料。可以导入简历（PDF / Word），或把准备好的问答粘贴成一份文本
+          {docs && docs.length === 0 && (
+            <div className="rounded-md border border-dashed border-gray-400 px-4 py-6 text-center text-sm text-gray-600">
+              还没有资料。可以导入简历（PDF / Word），或把准备好的问答粘贴成一份文本
+            </div>
+          )}
+
+          {docs && docs.length > 0 && (
+            <>
+              <ul className="space-y-2">
+                {docs.map((doc) => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    onToggleMode={(mode) => toggleMode(doc, mode)}
+                    onEdit={() => setEditing(doc)}
+                    onReimport={() => reimport(doc)}
+                    onDelete={() => setDeleting(doc)}
+                  />
+                ))}
+              </ul>
+              <UsageMeter docs={docs} />
+            </>
+          )}
+        </SettingsCard>
+
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-blue-500 bg-blue-50/80 text-sm font-medium text-blue-700">
+            松开鼠标导入资料
           </div>
         )}
 
-        {docs && docs.length > 0 && (
-          <>
-            <ul className="space-y-2">
-              {docs.map((doc) => (
-                <DocRow
-                  key={doc.id}
-                  doc={doc}
-                  onToggleMode={(mode) => toggleMode(doc, mode)}
-                  onEdit={() => setEditing(doc)}
-                  onReimport={() => reimport(doc)}
-                  onDelete={() => setDeleting(doc)}
-                />
-              ))}
-            </ul>
-            <UsageMeter docs={docs} />
-          </>
-        )}
-      </SettingsCard>
+        <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+          {editing && (
+            <DocEditor
+              key={editing === 'new' ? 'new' : editing.id}
+              target={editing}
+              onClose={() => setEditing(null)}
+              onSaved={(doc) =>
+                editing === 'new' ? setDocs((list) => [...(list ?? []), doc]) : replaceDoc(doc)
+              }
+            />
+          )}
+        </Dialog>
 
-      {dragging && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-blue-500 bg-blue-50/80 text-sm font-medium text-blue-700">
-          松开鼠标导入资料
-        </div>
-      )}
-
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        {editing && (
-          <DocEditor
-            key={editing === 'new' ? 'new' : editing.id}
-            target={editing}
-            onClose={() => setEditing(null)}
-            onSaved={(doc) =>
-              editing === 'new' ? setDocs((list) => [...(list ?? []), doc]) : replaceDoc(doc)
-            }
-          />
-        )}
-      </Dialog>
-
-      <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>删除资料</DialogTitle>
-            <DialogDescription>
-              确定删除资料「{deleting?.name}」吗？删除后无法恢复
-              {deleting?.source && '，原文件不受影响'}。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              取消
-            </Button>
-            <Button variant="destructive" onClick={() => deleting && remove(deleting)}>
-              删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>删除资料</DialogTitle>
+              <DialogDescription>
+                确定删除资料「{deleting?.name}」吗？删除后无法恢复
+                {deleting?.source && '，原文件不受影响'}。
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleting(null)}>
+                取消
+              </Button>
+              <Button variant="destructive" onClick={() => deleting && remove(deleting)}>
+                删除
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+      {/* Outside the drop zone: a file dropped here is not an import */}
+      <ExternalKnowledgeCard />
+    </>
   )
 }
 

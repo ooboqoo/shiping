@@ -29,7 +29,7 @@ export default tseslint.config(
     }
   },
   {
-    // Plain JS: hooks electron-builder loads, and the relay server and its phone page
+    // Plain JS: hooks electron-builder loads, the relay server and its phone page
     files: ['build/**/*.mjs', 'relay/**/*.{js,mjs}'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off'

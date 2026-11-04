@@ -14,6 +14,10 @@ import type { AvailableUpdate } from '../shared/update'
 import type { MobileSyncStatus } from '../shared/mobile'
 import type { ProxySettings, ProxyDetection, ProxyTestResult } from '../shared/proxy'
 import type { ApiProfile } from '../shared/api-profile'
+import type {
+  ExternalKnowledgeSettings,
+  ExternalKnowledgeTestResult
+} from '../shared/external-knowledge'
 
 // Custom APIs for renderer
 const api = {
@@ -43,6 +47,20 @@ const api = {
     proxy: ProxySettings,
     profile: Pick<ApiProfile, 'apiBaseURL' | 'apiKey' | 'apiHeaders'>
   ) => ipcRenderer.invoke('proxy:test', proxy, profile) as Promise<ProxyTestResult>,
+  // 外部知识库: one retrieval with the settings being edited, nothing saved
+  testExternalKnowledge: (draft: ExternalKnowledgeSettings, query: string) =>
+    ipcRenderer.invoke(
+      'external-knowledge:test',
+      draft,
+      query
+    ) as Promise<ExternalKnowledgeTestResult>,
+  // A request went without the 外部知识库's passages; main sends each failure once a minute
+  onExternalKnowledgeError: (callback: (message: string) => void) => {
+    ipcRenderer.on('external-knowledge-error', (_event, message: string) => callback(message))
+  },
+  removeExternalKnowledgeErrorListener: () => {
+    ipcRenderer.removeAllListeners('external-knowledge-error')
+  },
 
   // Resize transparent frameless windows without toggling Electron's native resizable style
   startWindowResize: (direction: 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw') =>

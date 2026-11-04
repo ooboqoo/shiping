@@ -19,6 +19,11 @@ import type { CaptureRegion } from '../../../../shared/capture-region'
 import type { AppMode } from '../../../../shared/api-profile'
 import type { HintMode } from '../../../../shared/conversation'
 import { DEFAULT_PROXY, normalizeProxySettings, type ProxySettings } from '../../../../shared/proxy'
+import {
+  DEFAULT_EXTERNAL_KNOWLEDGE,
+  normalizeExternalKnowledge,
+  type ExternalKnowledgeSettings
+} from '../../../../shared/external-knowledge'
 
 export type { Theme }
 export type { ApiProfile }
@@ -208,6 +213,8 @@ export const OPACITY_STEP = 0.05
 
 interface Settings {
   networkProxy: ProxySettings
+  /** 外部知识库: the user's own retrieval service, asked before each request of the modes ticked */
+  externalKnowledge: ExternalKnowledgeSettings
   /** Window colour scheme; `light` is a white background with dark text */
   theme: Theme
   /** Saved AI endpoints; the one being edited is mirrored onto the fields below */
@@ -379,6 +386,7 @@ interface SettingsStore extends Settings {
 
 const defaultSettings: Settings = {
   networkProxy: { ...DEFAULT_PROXY },
+  externalKnowledge: { ...DEFAULT_EXTERNAL_KNOWLEDGE },
   theme: DEFAULT_THEME,
   // Seeded on rehydrate; the id must exist up front so the active profile resolves
   apiProfiles: [],
@@ -798,6 +806,7 @@ export const useSettingsStore = create<SettingsStore>()(
         } catch {
           state.networkProxy = { ...DEFAULT_PROXY }
         }
+        state.externalKnowledge = normalizeExternalKnowledge(state.externalKnowledge)
         // Rebuild the presets on every load, so ones added in a later version
         // show up for existing users; the ones the user deleted stay out
         const persistedScenes = Array.isArray(state.scenes) ? state.scenes : []
