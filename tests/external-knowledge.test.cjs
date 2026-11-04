@@ -9,7 +9,11 @@ function fixture(config, respond) {
   const calls = [],
     notices = []
   const settings = {
-    externalKnowledge: { ...shared.DEFAULT_EXTERNAL_KNOWLEDGE, url: 'http://kb.local', ...config }
+    externalKnowledge: {
+      ...shared.DEFAULT_EXTERNAL_KNOWLEDGE,
+      url: 'http://ragflow.local/api/v1/dify',
+      ...config
+    }
   }
   global.mainWindow = {
     isDestroyed: () => false,
@@ -53,9 +57,13 @@ test('settings are repaired field by field, and old stores default to off', () =
 
 test('the retrieval URL follows Dify: /retrieval appended once, only plain HTTP(S)', () => {
   const { retrievalURL } = shared
-  assert.equal(retrievalURL(' http://127.0.0.1:8000 '), 'http://127.0.0.1:8000/retrieval')
-  assert.equal(retrievalURL('https://kb.example/api/'), 'https://kb.example/api/retrieval')
-  assert.equal(retrievalURL('https://kb.example/retrieval'), 'https://kb.example/retrieval')
+  const cloud = 'https://cloud.ragflow.io/api/v1/dify'
+  assert.equal(retrievalURL(` ${cloud} `), `${cloud}/retrieval`)
+  assert.equal(
+    retrievalURL('http://127.0.0.1/api/v1/dify/'),
+    'http://127.0.0.1/api/v1/dify/retrieval'
+  )
+  assert.equal(retrievalURL(`${cloud}/retrieval`), `${cloud}/retrieval`)
   for (const bad of ['', 'kb.example', 'file:///etc', 'https://u:p@kb.example', 'https://kb?x=1']) {
     assert.throws(() => retrievalURL(bad), /接口地址/)
   }
@@ -84,7 +92,7 @@ test('a request sends the Dify body and keeps the records within the settings', 
   const reference = await kb.getExternalReference('conversation', '项目里的缓存怎么做的')
   assert.equal(kb.calls.length, 1)
   const [{ url, init, body }] = kb.calls
-  assert.equal(url, 'http://kb.local/retrieval')
+  assert.equal(url, 'http://ragflow.local/api/v1/dify/retrieval')
   assert.equal(init.headers.Authorization, 'Bearer secret')
   assert.deepEqual(body, {
     knowledge_id: 'kb-1',
@@ -116,6 +124,13 @@ test('a failing service leaves the request without passages and says so once', a
   assert.equal(kb.notices.length, 1)
   assert.equal(kb.notices[0].channel, 'external-knowledge-error')
   assert.match(kb.notices[0].message, /HTTP 403：authorization failed/)
+
+  // RAGFlow answers errors in its own shape, as it does a missing 知识库 ID
+  const ragflow = fixture({ modes: ['screenshot'] }, () =>
+    json({ code: 101, message: 'required arguments are missing: knowledge_id; ' }, 400)
+  )
+  assert.equal(await ragflow.getExternalReference('screenshot', 'q'), '')
+  assert.match(ragflow.notices[0].message, /HTTP 400：required arguments are missing: knowledge_id/)
 
   const broken = fixture({ modes: ['screenshot'] }, () => new Response('<html>'))
   assert.equal(await broken.getExternalReference('screenshot', 'q'), '')

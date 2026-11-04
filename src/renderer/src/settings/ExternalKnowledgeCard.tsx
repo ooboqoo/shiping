@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DatabaseZap, LoaderCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,9 +21,9 @@ const MODES: { mode: AppMode; label: string }[] = [
 ]
 
 /**
- * 外部知识库: the user's own retrieval service (Dify's External Knowledge API),
- * asked before every request of the modes ticked. Its test results show here
- * only, since this window is kept off a shared screen.
+ * 外部知识库: a RAGFlow knowledge base, or any other service speaking Dify's
+ * External Knowledge API, asked before every request of the modes ticked. Its
+ * test results show here only, since this window is kept off a shared screen.
  */
 export function ExternalKnowledgeCard() {
   const config = useSettingsStore((s) => s.externalKnowledge)
@@ -55,17 +55,14 @@ export function ExternalKnowledgeCard() {
     <SettingsCard Icon={DatabaseZap} title="外部知识库">
       <div className="space-y-4">
         <p className="-mt-2 text-xs font-light leading-relaxed">
-          资料多到不适合每次全文发送时，可以接入自己运行的知识库服务：每次请求前按本轮的问题检索几段资料，随请求发给
-          AI。接口采用
-          <a
-            href="https://docs.dify.ai/zh/cloud/use-dify/knowledge/external-knowledge-api"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-0.5 text-blue-700 hover:underline"
-          >
+          资料多到不适合每次全文发送时，可以接入
+          <ExternalLink href="https://ragflow.io/">RAGFlow</ExternalLink>
+          知识库（云服务或自己部署）：每次请求前按本轮的问题检索几段资料，随请求发给
+          AI，建库、解析和检索都在 RAGFlow 里完成。接口采用
+          <ExternalLink href="https://docs.dify.ai/zh/cloud/use-dify/knowledge/external-knowledge-api">
             Dify 外部知识库 API
-          </a>
-          的格式，建库、向量化和精排都由你的服务负责。只有截图、没有文字时无从检索，这一轮不带资料；服务连不上或超时也照常作答。
+          </ExternalLink>
+          的格式，实现了它的其他服务也能接。只有截图、没有文字时无从检索，这一轮不带资料；服务连不上或超时也照常作答。
         </p>
 
         <Field label="用于" note="勾选的模式每次请求前先检索">
@@ -94,14 +91,18 @@ export function ExternalKnowledgeCard() {
           </div>
         </Field>
 
-        <Field label="接口地址" note="请求发到它末尾加 /retrieval 的地址">
+        <Field
+          label="接口地址"
+          noteLayout="stacked"
+          note="RAGFlow 云服务填 https://cloud.ragflow.io/api/v1/dify，自己部署的换成自己的地址"
+        >
           <Input
             className="w-60 shrink-0 bg-white"
             value={config.url}
             spellCheck={false}
             aria-invalid={!!urlError}
             onChange={(e) => update(() => ({ url: e.target.value }))}
-            placeholder="http://127.0.0.1:8000"
+            placeholder="http://127.0.0.1/api/v1/dify"
           />
         </Field>
         {urlError && (
@@ -110,24 +111,29 @@ export function ExternalKnowledgeCard() {
           </p>
         )}
 
-        <Field label="API Key" note="作为 Bearer 发送；服务不需要时留空">
+        <Field label="API Key" noteLayout="stacked" note="在 RAGFlow 的「设置 → API」里创建">
           <SecretInput
             value={config.apiKey}
             onChange={(apiKey) => update(() => ({ apiKey }))}
-            placeholder="可选"
+            placeholder="ragflow-…"
           />
         </Field>
 
-        <Advanced defaultOpen={!!config.knowledgeId.trim()}>
-          <Field label="知识库 ID" note="knowledge_id，一个服务里有多个知识库时填">
-            <Input
-              className="w-60 shrink-0 bg-white"
-              value={config.knowledgeId}
-              spellCheck={false}
-              onChange={(e) => update(() => ({ knowledgeId: e.target.value }))}
-              placeholder="可选"
-            />
-          </Field>
+        {/* RAGFlow refuses a request without it, so it is not folded under 高级 */}
+        <Field
+          label="知识库 ID"
+          noteLayout="stacked"
+          note="RAGFlow 必填：打开知识库，页面地址末尾那串 ID"
+        >
+          <Input
+            className="w-60 shrink-0 bg-white"
+            value={config.knowledgeId}
+            spellCheck={false}
+            onChange={(e) => update(() => ({ knowledgeId: e.target.value }))}
+          />
+        </Field>
+
+        <Advanced>
           <Field
             label="每次最多"
             note={`${TOP_K_RANGE.min}–${TOP_K_RANGE.max} 段，合计不超过 6000 字`}
@@ -162,6 +168,20 @@ export function ExternalKnowledgeCard() {
         <TestPanel config={config} disabled={!config.url.trim() || !!urlError} />
       </div>
     </SettingsCard>
+  )
+}
+
+/** A link in the card's text, opened in the browser */
+function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="px-0.5 text-blue-700 hover:underline"
+    >
+      {children}
+    </a>
   )
 }
 

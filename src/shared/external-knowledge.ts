@@ -9,11 +9,11 @@ import type { AppMode } from './api-profile'
 export interface ExternalKnowledgeSettings {
   /** Modes whose requests ask the service first; empty means off */
   modes: AppMode[]
-  /** The endpoint; `/retrieval` is appended, as Dify does */
+  /** The endpoint (RAGFlow: `{host}/api/v1/dify`); `/retrieval` is appended, as Dify does */
   url: string
   /** Sent as `Authorization: Bearer …`; blank sends none */
   apiKey: string
-  /** `knowledge_id`, for a service that holds several knowledge bases */
+  /** `knowledge_id`: RAGFlow's dataset ID, which it requires */
   knowledgeId: string
   /** `retrieval_setting.top_k`: at most this many passages per request */
   topK: number
@@ -96,7 +96,7 @@ export function retrievalURL(endpoint: string): string {
   try {
     url = new URL(endpoint.trim())
   } catch {
-    throw new Error('请填写完整的接口地址，例如 http://127.0.0.1:8000')
+    throw new Error('请填写完整的接口地址，例如 https://cloud.ragflow.io/api/v1/dify')
   }
   if (
     !['http:', 'https:'].includes(url.protocol) ||

@@ -12,11 +12,11 @@ import { settings } from './settings'
 import { apiFetch } from './api-fetch'
 
 /**
- * 外部知识库: before a request, ask the user's own retrieval service for the
- * passages that fit this round's question, in the format of Dify's External
- * Knowledge API. The passages go in front of the round's user message, never
- * into the system prompt (whose stable prefix platforms cache) or the
- * conversation history (a follow-up searches again with its own question).
+ * 外部知识库: before a request, ask the user's retrieval service (RAGFlow, or
+ * anything else speaking Dify's External Knowledge API) for the passages that
+ * fit this round's question. The passages go in front of the round's user
+ * message, never into the system prompt (whose stable prefix platforms cache)
+ * or the conversation history (a follow-up searches again with its own question).
  *
  * The service only ever adds to an answer: one that is off, slow or broken
  * leaves the request to go without it, and the user is told once a minute.
@@ -76,7 +76,10 @@ export async function retrieveExternal(
   }
 }
 
-/** `error_msg` is Dify's field; a gateway in front may answer in OpenAI's shape */
+/**
+ * `error_msg` is Dify's field, `message` RAGFlow's; a gateway in front may
+ * answer in OpenAI's shape
+ */
 function httpMessage(status: number, body: string): string {
   let detail = ''
   try {
