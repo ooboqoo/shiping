@@ -17,11 +17,20 @@ export function useKnowledgeDocs() {
   const [docs, setDocs] = useState<KnowledgeDoc[] | null>(null)
   useEffect(() => {
     let alive = true
-    window.api.listKnowledge().then((list) => {
-      if (alive) setDocs(list)
-    })
+    const refresh = () =>
+      window.api
+        .listKnowledge()
+        .then((list) => {
+          if (alive) setDocs(list)
+        })
+        .catch(() => {})
+    void refresh()
+    const unsubscribe = window.api.onKnowledgeChanged(refresh)
+    window.addEventListener('knowledge:refresh', refresh)
     return () => {
       alive = false
+      unsubscribe()
+      window.removeEventListener('knowledge:refresh', refresh)
     }
   }, [])
   return [docs, setDocs] as const

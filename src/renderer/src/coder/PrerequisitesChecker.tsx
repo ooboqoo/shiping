@@ -5,10 +5,7 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { Button } from '@/components/ui/button'
 import { SelectBaseURL } from '@/settings/SelectBaseURL'
 import { changeApiBaseURL } from '@/lib/model-switch'
-import { PROVIDERS } from '@/lib/providers'
 
-/** Preselected for a first setup: the recommended platform, so a key alone is enough */
-const RECOMMENDED_BASE_URL = PROVIDERS.find((p) => p.id === 'deepseek')!.baseURL
 
 /** Whether any saved profile already holds a key, even if the flag is not set yet */
 function hasAnyKeyStored(): boolean {
@@ -20,10 +17,11 @@ export function PrerequisitesChecker() {
   const navigate = useNavigate()
   const { apiKey, apiBaseURL, hasConfiguredApi, updateCredential } = useSettingsStore()
   const [inputApiKey, setInputApiKey] = useState(apiKey)
+  const [inputModel, setInputModel] = useState('')
   // null until the user picks: follows the store meanwhile, so a URL from `.env`
   // synced after mount still wins over the recommended one
   const [pickedBaseURL, setInputApiBaseURL] = useState<string | null>(null)
-  const inputApiBaseURL = pickedBaseURL ?? (apiBaseURL || RECOMMENDED_BASE_URL)
+  const inputApiBaseURL = pickedBaseURL ?? apiBaseURL
   const [showApiKey, setShowApiKey] = useState(false)
 
   // The dialog only asks for a key once in the app's life. It used to key off
@@ -43,9 +41,10 @@ export function PrerequisitesChecker() {
       updateCredential({ apiKey: inputApiKey.trim() })
     }
     if (inputApiBaseURL.trim()) {
-      // Also picks a model in this platform's spelling, so first use works out of the box
+      // Preserve explicit user selection.
       changeApiBaseURL(inputApiBaseURL.trim())
     }
+    updateCredential({ model: inputModel.trim() })
   }
 
   if (!shouldShow) return null
@@ -55,17 +54,7 @@ export function PrerequisitesChecker() {
       <div className="m-auto bg-white rounded-lg p-6 pt-1 w-120 shadow-lg">
         <h1 className="text-xl font-bold text-center mb-2">欢迎使用识屏</h1>
         <div className="text-sm text-gray-600">
-          请先配置 AI 平台，推荐使用
-          <a
-            href="https://platform.deepseek.com/"
-            target="_blank"
-            rel="noreferrer"
-            className="text-blue-500 mx-1"
-          >
-            DeepSeek
-          </a>
-          ，已经选好它的地址，填上 API Key 即可。其他兼容 OpenAI API
-          的平台也可以，在下面换成它的地址。
+          请填写你自己的 AI 平台、API Key 和模型名称。模型不会自动选择。
         </div>
 
         <div className="space-y-2 my-4">
@@ -101,10 +90,16 @@ export function PrerequisitesChecker() {
               </Button>
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">模型名称</label>
+            <input value={inputModel} onChange={(e) => setInputModel(e.target.value)}
+              placeholder="请输入或到更多设置中选择模型"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-sm" />
+          </div>
         </div>
 
         <div className="flex gap-3">
-          <Button disabled={!inputApiKey.trim()} className="flex-1" onClick={saveApiKey}>
+          <Button disabled={!inputApiKey.trim() || !inputModel.trim()} className="flex-1" onClick={saveApiKey}>
             开始使用
           </Button>
           <Button

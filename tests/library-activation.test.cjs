@@ -1,0 +1,4 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),load=require('./load-source.cjs')
+test('activation fails closed for invalid or missing database without creating an empty replacement',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'shiping-activation-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const {openActiveLibrary}=load('src/main/library/activation.ts');assert.equal(openActiveLibrary(root),undefined);fs.mkdirSync(path.join(root,'library'));fs.writeFileSync(path.join(root,'library/active.json'),JSON.stringify({version:1,database:'shiping.sqlite'}));assert.throws(()=>openActiveLibrary(root),/缺失/);assert.equal(fs.existsSync(path.join(root,'library/shiping.sqlite')),false);fs.writeFileSync(path.join(root,'library/active.json'),JSON.stringify({version:1,database:'../other.sqlite'}));assert.throws(()=>openActiveLibrary(root),/无效/)
+})

@@ -1,3 +1,4 @@
+import { normalizeRagConfig, type RagConfig } from '../../../../shared/rag'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import codingPrompt from './prompts/coding.md?raw'
@@ -207,6 +208,7 @@ export const OPACITY_MAX = 1
 export const OPACITY_STEP = 0.05
 
 interface Settings {
+  ragConfig: RagConfig
   networkProxy: ProxySettings
   /** Window colour scheme; `light` is a white background with dark text */
   theme: Theme
@@ -378,6 +380,7 @@ interface SettingsStore extends Settings {
 }
 
 const defaultSettings: Settings = {
+  ragConfig: { mode: 'local' },
   networkProxy: { ...DEFAULT_PROXY },
   theme: DEFAULT_THEME,
   // Seeded on rehydrate; the id must exist up front so the active profile resolves
@@ -763,7 +766,7 @@ export const useSettingsStore = create<SettingsStore>()(
       }
     }),
     {
-      // From before the rename to 识屏; a new key would lose everyone's settings
+      // From before the rename to Shiping; a new key would lose everyone's settings
       name: 'interview-coder-settings',
       version: 8,
       migrate: (persisted, version) => {
@@ -797,6 +800,11 @@ export const useSettingsStore = create<SettingsStore>()(
           state.networkProxy = normalizeProxySettings(state.networkProxy)
         } catch {
           state.networkProxy = { ...DEFAULT_PROXY }
+        }
+        try {
+          state.ragConfig = normalizeRagConfig(state.ragConfig)
+        } catch {
+          state.ragConfig = { mode: 'full' }
         }
         // Rebuild the presets on every load, so ones added in a later version
         // show up for existing users; the ones the user deleted stay out

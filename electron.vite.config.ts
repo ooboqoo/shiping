@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
@@ -5,7 +6,18 @@ import tailwindcss from '@tailwindcss/vite'
 
 // main and preload leave `dependencies` to node_modules: `build.externalizeDeps` is on by default
 export default defineConfig({
-  main: {},
+  main: {
+    plugins: [
+      {
+        name: 'local-document-worker',
+        closeBundle() {
+          execFileSync(process.execPath, [resolve('scripts/build-documents.cjs')], {
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+          })
+        }
+      }
+    ]
+  },
   preload: {},
   renderer: {
     resolve: {

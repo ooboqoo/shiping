@@ -4,6 +4,7 @@ import type { ApiProfile, AppMode } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
 import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 import { DEFAULT_PROXY, normalizeProxySettings } from '../shared/proxy'
+import { normalizeRagConfig } from '../shared/rag'
 import { setStealthEnabled } from './window-privacy'
 
 ipcMain.handle('getAppVersion', () => {
@@ -23,6 +24,9 @@ export function onSettingsChanged(listener: SettingsListener): void {
 }
 
 ipcMain.handle('updateAppSettings', (_event, _settings) => {
+  if ('ragConfig' in _settings) {
+    _settings = { ..._settings, ragConfig: normalizeRagConfig(_settings.ragConfig) }
+  }
   if ('networkProxy' in _settings) {
     _settings = { ..._settings, networkProxy: normalizeProxySettings(_settings.networkProxy) }
   }
@@ -85,6 +89,7 @@ ipcMain.handle('selectCodeDir', () => pickDirectory('选择代码保存目录'))
 ipcMain.handle('selectConversationDir', () => pickDirectory('选择对话记录保存目录'))
 
 export const settings = {
+  ragConfig: { mode: 'local' as 'full' | 'local' },
   networkProxy: { ...DEFAULT_PROXY },
   /** Window colour scheme, kept in sync with the renderer; see renderer lib/theme.ts */
   theme: 'dark' as 'dark' | 'light',
@@ -92,7 +97,7 @@ export const settings = {
   apiKey: process.env.API_KEY || '',
   /** Extra request headers, one `Name: Value` per line; see shared/request-headers.ts */
   apiHeaders: '',
-  model: process.env.MODEL || '',
+  model: '',
   /**
    * The active profile's 「关闭思考」, see thinking.ts. Must stay falsy here:
    * App.tsx fills blank renderer fields from main, so `true` would overwrite a

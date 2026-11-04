@@ -1,3 +1,8 @@
+import { KnowledgeUploads } from '../KnowledgeUploads'
+import { enqueueKnowledgeUploads } from '../../lib/knowledge-uploads'
+import { LibraryRerankSwitch } from '../LibraryModelSettings'
+import { useSettingsStore } from '@/lib/store/settings'
+import { RagSettings } from '../RagSettings'
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import {
@@ -30,23 +35,15 @@ import {
   knowledgeUsage,
   useKnowledgeDocs,
   KNOWLEDGE_CHAR_LIMIT,
-  type KnowledgeDoc,
-  type KnowledgeImportResult
+  type KnowledgeDoc
 } from '@/lib/knowledge'
 import { SettingsCard } from '../components'
+import { mergeKnowledgeDocs } from '../../../../shared/knowledge'
 
 const MODES: { mode: AppMode; label: string }[] = [
   { mode: 'screenshot', label: '截图' },
   { mode: 'conversation', label: '对话' }
 ]
-
-/** One toast for what came in, one per file that did not */
-function reportImport(result: KnowledgeImportResult) {
-  const { added, failed } = result
-  if (added.length === 1) toast.success(`已导入「${added[0].name}」`)
-  else if (added.length > 1) toast.success(`已导入 ${added.length} 份资料`)
-  for (const { name, error } of failed) toast.error(`「${name}」导入失败`, { description: error })
-}
 
 const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files')
 
@@ -56,10 +53,25 @@ const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files')
  * that mode's system prompt. Files can be picked or dropped anywhere here.
  */
 export function KnowledgeSection() {
+  const local = useSettingsStore((s) => s.ragConfig.mode === 'local')
   const [docs, setDocs] = useKnowledgeDocs()
+  const [libraries, setLibraries] = useState<{id: string; name: string}[]>([])
+  const [selected, setSelected] = useState('')
+  const [switching, setSwitching] = useState(false)
+  useEffect(() => {
+    const read = () => window.api.listKnowledgeLibraries().then((result) => {
+      setLibraries(result.libraries)
+      setSelected(result.selected)
+    }).catch((error) => toast.error('无法读取知识库', {description: String(error)}))
+    void read()
+    window.addEventListener('focus', read)
+    return () => window.removeEventListener('focus', read)
+  }, [])
   const [editing, setEditing] = useState<KnowledgeDoc | 'new' | null>(null)
   const [deleting, setDeleting] = useState<KnowledgeDoc | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [selectingFiles, setSelectingFiles] = useState(false)
+  const selectingFilesRef = useRef(false)
   // dragenter / dragleave fire for every child crossed; only the outermost pair counts
   const dragDepth = useRef(0)
 
@@ -77,25 +89,29 @@ export function KnowledgeSection() {
   const replaceDoc = (doc: KnowledgeDoc) =>
     setDocs((list) => list?.map((d) => (d.id === doc.id ? doc : d)) ?? null)
 
-  const handleImport = (result: KnowledgeImportResult | null) => {
-    if (!result) return
-    setDocs((list) => [...(list ?? []), ...result.added])
-    reportImport(result)
-  }
-
   const toggleMode = async (doc: KnowledgeDoc, mode: AppMode) => {
     const on = doc.modes.includes(mode)
     const modes = MODES.map((m) => m.mode).filter((m) => (m === mode ? !on : doc.modes.includes(m)))
-    replaceDoc({ ...doc, modes })
-    const saved = await window.api.updateKnowledge(doc.id, { modes })
-    if (saved) replaceDoc(saved)
+    try {
+      const saved = await window.api.updateKnowledge(doc.id, { modes, version: doc.version })
+      if (saved) replaceDoc(saved)
+    } catch (error) {
+      setDocs(await window.api.listKnowledge())
+      toast.error('资料已变化，请刷新后重试', { description: String(error) })
+    }
   }
 
   const reimport = async (doc: KnowledgeDoc) => {
-    const { doc: updated, error } = await window.api.reimportKnowledge(doc.id)
+    if (
+      !window.confirm(
+        '重新解析会创建新版本，成功后替换当前内容。若曾人工修改，请先下载保留。确认重新解析原件？'
+      )
+    )
+      return
+    const { doc: updated, error } = await window.api.reimportKnowledge(doc.id, doc.version)
     if (updated) {
       replaceDoc(updated)
-      toast.success(`已从「${doc.source}」重新导入`)
+      toast.success(`已提交「${doc.source}」后台处理`)
     } else {
       toast.error('重新导入失败', { description: error })
     }
@@ -103,8 +119,13 @@ export function KnowledgeSection() {
 
   const remove = async (doc: KnowledgeDoc) => {
     setDeleting(null)
-    setDocs((list) => list?.filter((d) => d.id !== doc.id) ?? null)
-    await window.api.removeKnowledge(doc.id)
+    try {
+      await window.api.removeKnowledge(doc.id, doc.version)
+      setDocs((list) => list?.filter((d) => d.id !== doc.id) ?? null)
+    } catch (error) {
+      setDocs(await window.api.listKnowledge())
+      toast.error('资料已变化，未执行移除', { description: String(error) })
+    }
   }
 
   const dropHandlers = {
@@ -124,26 +145,64 @@ export function KnowledgeSection() {
       const paths = [...e.dataTransfer.files]
         .map((file) => window.api.getPathForFile(file))
         .filter(Boolean)
-      if (paths.length > 0) handleImport(await window.api.importKnowledgeFiles(paths))
+      if (paths.length > 0) {
+        enqueueKnowledgeUploads(paths, selected)
+      }
     }
   }
 
   return (
     <div className="relative" {...dropHandlers}>
-      <SettingsCard Icon={LibraryBig} title="资料库">
+      <SettingsCard Icon={LibraryBig} title={`知识库 · ${libraries.find((item) => item.id === selected)?.name || '加载中'}`}>
+        <div className="mb-4">
+          <p className="mb-2 text-sm">选择知识库（上传、资料列表与 AI 检索共用）</p>
+          <div className="flex flex-wrap gap-2">
+            {libraries.map((item) => <Button key={item.id} variant="outline" disabled={switching || selectingFiles}
+              aria-pressed={selected === item.id}
+              className={selected === item.id ? 'border-blue-500 bg-blue-50 text-blue-800' : 'bg-white'}
+              onClick={async () => {
+                if (selected === item.id) return
+                setSwitching(true)
+                try {
+                  await window.api.selectKnowledgeLibrary(item.id)
+                  setSelected(item.id)
+                  setEditing(null)
+                  setDeleting(null)
+                  setDocs(await window.api.listKnowledge())
+                  window.dispatchEvent(new Event('knowledge:refresh'))
+                } catch (error) { toast.error('切换失败', {description: String(error)}) }
+                finally { setSwitching(false) }
+              }}>{item.name}</Button>)}
+          </div>
+        </div>
         <p className="-mt-2 mb-4 text-xs font-light">
           导入简历、准备好的问答、笔记等资料，AI
-          作答时会优先参考；每份资料可以分别选择用于截图模式、对话模式。资料只保存在本机，但会随每次请求一起发给该模式使用的
-          AI 平台
+          作答时会优先参考；每份资料可以分别选择用于截图模式、对话模式。
+          {local
+            ? '本地检索模式仅发送命中的资料片段，不会每次发送全文。'
+            : '全文模式会随每次请求发送该模式启用的全部资料。'}
         </p>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            onClick={async () => handleImport(await window.api.pickKnowledgeFiles())}
+            disabled={selectingFiles || switching || !selected}
+            onClick={async () => {
+              if (selectingFilesRef.current) return
+              selectingFilesRef.current = true
+              setSelectingFiles(true)
+              try {
+                enqueueKnowledgeUploads(await window.api.selectKnowledgeFiles(), selected)
+              } catch (error) {
+                toast.error('无法选择文件', { description: String(error) })
+              } finally {
+                selectingFilesRef.current = false
+                setSelectingFiles(false)
+              }
+            }}
           >
             <FileUp className="h-4 w-4" />
-            导入文件
+            {selectingFiles ? '正在选择文件…' : '上传文件到当前库'}
           </Button>
           <Button
             size="sm"
@@ -155,9 +214,23 @@ export function KnowledgeSection() {
             新建文本
           </Button>
           <span className="text-xs font-light">
-            支持 PDF、Word（.docx）、Markdown、TXT，也可以把文件拖到这里（选择弹窗可能被本窗口遮挡）
+            每个文件不超过30MB，每批最多50个。上传后自动解析、清洗和建立索引；需要复核或模型配置时会显示提示。支持
+            PDF、DOCX、Markdown、TXT、图片、XLSX、PPTX，也可拖入文件。其他知识库请打开知识库管理后选择。
           </span>
         </div>
+
+        <Button
+          variant="link"
+          onClick={() =>
+            void window.api
+              .openLibraryManager()
+              .catch((error) => toast.error('无法打开知识库管理', { description: String(error) }))
+          }
+        >
+          打开本机知识库管理与清洗报告
+        </Button>
+
+        <KnowledgeUploads />
 
         {docs && docs.length === 0 && (
           <div className="rounded-md border border-dashed border-gray-400 px-4 py-6 text-center text-sm text-gray-600">
@@ -183,6 +256,12 @@ export function KnowledgeSection() {
           </>
         )}
       </SettingsCard>
+      <div className="mt-6">
+        <RagSettings />
+      </div>
+      <div className="my-4">
+        <LibraryRerankSwitch />
+      </div>
 
       {dragging && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-blue-500 bg-blue-50/80 text-sm font-medium text-blue-700">
@@ -197,7 +276,9 @@ export function KnowledgeSection() {
             target={editing}
             onClose={() => setEditing(null)}
             onSaved={(doc) =>
-              editing === 'new' ? setDocs((list) => [...(list ?? []), doc]) : replaceDoc(doc)
+              editing === 'new'
+                ? setDocs((list) => mergeKnowledgeDocs(list ?? [], [doc]))
+                : replaceDoc(doc)
             }
           />
         )}
@@ -206,10 +287,10 @@ export function KnowledgeSection() {
       <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>删除资料</DialogTitle>
+            <DialogTitle>移入回收站</DialogTitle>
             <DialogDescription>
-              确定删除资料「{deleting?.name}」吗？删除后无法恢复
-              {deleting?.source && '，原文件不受影响'}。
+              确定将资料「{deleting?.name}
+              」移入回收站吗？原文和源文件仍保留，可在本地管理网页中恢复。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -217,7 +298,7 @@ export function KnowledgeSection() {
               取消
             </Button>
             <Button variant="destructive" onClick={() => deleting && remove(deleting)}>
-              删除
+              移入回收站
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -314,6 +395,7 @@ function RowAction({
 
 /** How much each mode sends with every request, against the suggested limit */
 function UsageMeter({ docs }: { docs: KnowledgeDoc[] }) {
+  const local = useSettingsStore((s) => s.ragConfig.mode === 'local')
   const usages = MODES.map(({ mode }) => ({ mode, ...knowledgeUsage(docs, mode) }))
 
   return (
@@ -321,14 +403,19 @@ function UsageMeter({ docs }: { docs: KnowledgeDoc[] }) {
       {usages.map(({ mode, count, chars, tokens, over }) => (
         <div key={mode}>
           <div className="mb-1 flex justify-between gap-2 text-xs">
-            <span>{MODE_NAMES[mode]}每次请求带上</span>
+            <span>
+              {MODE_NAMES[mode]}
+              {local ? '可检索资料' : '每次请求带上'}
+            </span>
             <span className={over ? 'font-medium text-amber-800' : 'text-gray-600'}>
               {count > 0
                 ? `${count} 份 · ${formatChars(chars)}（${formatTokens(tokens)}）`
                 : '不带资料'}
               <span className="text-gray-500">
                 {' '}
-                / 建议不超过 {formatChars(KNOWLEDGE_CHAR_LIMIT)}
+                {local
+                  ? ' / 每次最多选取 6 段、总计 6000 字'
+                  : ` / 建议不超过 ${formatChars(KNOWLEDGE_CHAR_LIMIT)}`}
               </span>
             </span>
           </div>
@@ -340,7 +427,7 @@ function UsageMeter({ docs }: { docs: KnowledgeDoc[] }) {
           </div>
         </div>
       ))}
-      {usages.some((u) => u.over) && (
+      {!local && usages.some((u) => u.over) && (
         <p className="flex items-start gap-1 text-xs text-amber-800">
           <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>
@@ -367,15 +454,32 @@ function DocEditor({
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
+  const [version, setVersion] = useState<string | undefined>()
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (target === 'new') return
     let alive = true
-    window.api.getKnowledgeText(target.id).then((saved) => {
-      if (!alive) return
-      setText(saved)
-      setLoading(false)
-    })
+    window.api
+      .getKnowledgeDocument(target.id)
+      .then((saved) => {
+        if (!alive) return
+        setName(saved.doc.name)
+        setText(saved.text)
+        setVersion(saved.doc.version)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (!alive) return
+        setLoading(false)
+        toast.error('资料无法加载，请关闭后重新打开')
+      })
     return () => {
       alive = false
     }
@@ -383,12 +487,21 @@ function DocEditor({
 
   const save = async () => {
     setSaving(true)
-    const doc = isNew
-      ? await window.api.createKnowledge(name, text)
-      : await window.api.updateKnowledge(target.id, { name, text })
-    setSaving(false)
-    if (doc) onSaved(doc)
-    onClose()
+    try {
+      const doc = isNew
+        ? await window.api.createKnowledge(name, text)
+        : await window.api.updateKnowledge(target.id, { name, text, version })
+      if (!mounted.current) return
+      if (doc) onSaved(doc)
+      onClose()
+    } catch {
+      if (mounted.current)
+        toast.error('未保存：资料可能已在其他位置变化', {
+          description: '当前编辑仍保留，请复制需要的内容，重新打开资料后合并。'
+        })
+    } finally {
+      if (mounted.current) setSaving(false)
+    }
   }
 
   return (
@@ -402,6 +515,7 @@ function DocEditor({
         </DialogDescription>
       </DialogHeader>
       <Input
+        disabled={loading || saving}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="资料名称，如「我的简历」「八股问答」，AI 会看到这个名称"
@@ -411,7 +525,7 @@ function DocEditor({
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        disabled={loading}
+        disabled={loading || saving}
         placeholder={
           loading
             ? '读取中…'
@@ -422,10 +536,13 @@ function DocEditor({
       <DialogFooter className="items-center sm:justify-between">
         <span className="text-xs text-gray-600">{formatChars(text.trim().length)}</span>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             取消
           </Button>
-          <Button onClick={save} disabled={loading || saving || !text.trim()}>
+          <Button
+            onClick={save}
+            disabled={loading || saving || !text.trim() || (!isNew && !version)}
+          >
             保存
           </Button>
         </div>

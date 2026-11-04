@@ -48,6 +48,9 @@ jobs:
           rm "$RUNNER_TEMP/codesign.p12"
           echo "MAC_SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
+      - name: Prepare bundled OCR resources
+        run: npm run setup:ocr
+
       - name: Package Electron app
         run: npm run build:${{ matrix.os == 'windows-latest' && 'win' || 'mac' }}
         env:
