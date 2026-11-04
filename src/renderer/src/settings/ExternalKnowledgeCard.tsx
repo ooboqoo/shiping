@@ -56,7 +56,15 @@ export function ExternalKnowledgeCard() {
       <div className="space-y-4">
         <p className="-mt-2 text-xs font-light leading-relaxed">
           资料多到不适合每次全文发送时，可以接入自己运行的知识库服务：每次请求前按本轮的问题检索几段资料，随请求发给
-          AI。接口采用 Dify 外部知识库 API
+          AI。接口采用
+          <a
+            href="https://docs.dify.ai/zh/cloud/use-dify/knowledge/external-knowledge-api"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-0.5 text-blue-700 hover:underline"
+          >
+            Dify 外部知识库 API
+          </a>
           的格式，建库、向量化和精排都由你的服务负责。只有截图、没有文字时无从检索，这一轮不带资料；服务连不上或超时也照常作答。
         </p>
 

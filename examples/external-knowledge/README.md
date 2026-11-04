@@ -6,7 +6,7 @@
 
 ## 接口
 
-沿用 [Dify 外部知识库 API](https://docs.dify.ai/en/guides/knowledge-base/external-knowledge-api) 的格式：给 Dify 写过的服务可以直接接上，反过来也一样。
+沿用 [Dify 外部知识库 API](https://docs.dify.ai/zh/cloud/use-dify/knowledge/external-knowledge-api) 的格式：给 Dify 写过的服务可以直接接上，反过来也一样。
 
 ```http
 POST {接口地址}/retrieval
