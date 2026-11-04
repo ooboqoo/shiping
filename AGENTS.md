@@ -167,8 +167,6 @@ relay/                       # 手机同步's relay + phone page: its own packag
 ├── server.mjs               # The public relay: `RELAY_KEY=… node server.mjs`
 ├── public/                  # The phone page (plain JS, vendored marked); also inlined into main with `?raw`
 └── README.md                # Deployment (Docker / Node), in Chinese
-
-examples/external-knowledge/ # 外部知识库: the protocol (README, in Chinese) and a dependency-free sample service; not shipped
 ```
 
 ## Architecture
@@ -385,7 +383,7 @@ Material the user wants the AI to draw on — a resume, prepared Q&A, notes — 
 
 ### 外部知识库 (External Knowledge)
 
-For material too large to send whole, the user runs a retrieval service of their own and Shiping asks it before each request (`src/main/external-knowledge.ts`). Shiping indexes nothing: building, parsing, embedding and reranking all stay with the service, so it can be anything that speaks the protocol (`examples/external-knowledge/`):
+For material too large to send whole, the user runs a retrieval service of their own and Shiping asks it before each request (`src/main/external-knowledge.ts`). Shiping indexes nothing: building, parsing, embedding and reranking all stay with the service, so it can be anything that speaks Dify's External Knowledge API:
 
 - The protocol is Dify's External Knowledge API, not one of ours: `POST {url}/retrieval` with `knowledge_id`, `query`, `retrieval_setting: { top_k, score_threshold }`, answered by `{ records: [{ content, score, title, metadata }] }`. A service written for Dify plugs in as is
 - The caller says what to search with, instead of the message being parsed back: the transcription sent with a screenshot, a follow-up's question, the sentences a 对话模式 hint is for (with the one before when they are short, `hintQuery()`). A bare screenshot has no text, so its round goes without passages
