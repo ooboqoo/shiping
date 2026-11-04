@@ -96,7 +96,7 @@ export function retrievalURL(endpoint: string): string {
   try {
     url = new URL(endpoint.trim())
   } catch {
-    throw new Error('请填写完整的接口地址，例如 https://cloud.ragflow.io/api/v1/dify')
+    throw new Error('请填写完整的接口地址，例如 http://127.0.0.1/api/v1/dify')
   }
   if (
     !['http:', 'https:'].includes(url.protocol) ||

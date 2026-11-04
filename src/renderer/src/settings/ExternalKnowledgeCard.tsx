@@ -55,10 +55,10 @@ export function ExternalKnowledgeCard() {
     <SettingsCard Icon={DatabaseZap} title="外部知识库">
       <div className="space-y-4">
         <p className="-mt-2 text-xs font-light leading-relaxed">
-          资料多到不适合每次全文发送时，可以接入
+          资料多到不适合每次全文发送时，可以接入自己部署的
           <ExternalLink href="https://ragflow.io/">RAGFlow</ExternalLink>
-          知识库（云服务或自己部署）：每次请求前按本轮的问题检索几段资料，随请求发给
-          AI，建库、解析和检索都在 RAGFlow 里完成。接口采用
+          知识库：每次请求前按本轮的问题检索几段资料，随请求发给 AI，建库、解析和检索都在 RAGFlow
+          里完成。接口采用
           <ExternalLink href="https://docs.dify.ai/zh/cloud/use-dify/knowledge/external-knowledge-api">
             Dify 外部知识库 API
           </ExternalLink>
@@ -91,11 +91,7 @@ export function ExternalKnowledgeCard() {
           </div>
         </Field>
 
-        <Field
-          label="接口地址"
-          noteLayout="stacked"
-          note="RAGFlow 云服务填 https://cloud.ragflow.io/api/v1/dify，自己部署的换成自己的地址"
-        >
+        <Field label="接口地址" noteLayout="stacked" note="RAGFlow 的访问地址后面加 /api/v1/dify">
           <Input
             className="w-60 shrink-0 bg-white"
             value={config.url}

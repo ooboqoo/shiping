@@ -57,13 +57,13 @@ test('settings are repaired field by field, and old stores default to off', () =
 
 test('the retrieval URL follows Dify: /retrieval appended once, only plain HTTP(S)', () => {
   const { retrievalURL } = shared
-  const cloud = 'https://cloud.ragflow.io/api/v1/dify'
-  assert.equal(retrievalURL(` ${cloud} `), `${cloud}/retrieval`)
+  const local = 'http://127.0.0.1/api/v1/dify'
+  assert.equal(retrievalURL(` ${local} `), `${local}/retrieval`)
   assert.equal(
-    retrievalURL('http://127.0.0.1/api/v1/dify/'),
-    'http://127.0.0.1/api/v1/dify/retrieval'
+    retrievalURL('https://ragflow.example.com/api/v1/dify/'),
+    'https://ragflow.example.com/api/v1/dify/retrieval'
   )
-  assert.equal(retrievalURL(`${cloud}/retrieval`), `${cloud}/retrieval`)
+  assert.equal(retrievalURL(`${local}/retrieval`), `${local}/retrieval`)
   for (const bad of ['', 'kb.example', 'file:///etc', 'https://u:p@kb.example', 'https://kb?x=1']) {
     assert.throws(() => retrievalURL(bad), /接口地址/)
   }
