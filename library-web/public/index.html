@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>本地知识库</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/ui-helpers.js" defer></script>
+    <script src="/chat-ui.js" defer></script>
+    <script src="/uploads-ui.js" defer></script>
+    <script src="/document-purge-ui.js" defer></script>
+    <script src="/model-providers.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <aside id="sidebar" class="sidebar" aria-label="知识库导航"></aside>
+    <main class="workspace">
+      <header class="topbar">
+        <span class="breadcrumb"
+          >工作空间 / <strong id="crumb">资料库</strong></span
+        ><span class="local-badge"><i></i>仅本机访问</span>
+      </header>
+      <div id="notice" class="notice" role="alert" hidden></div>
+      <section
+        id="upload-panel"
+        class="upload-panel"
+        aria-label="上传队列"
+        hidden
+      ></section>
+      <div id="content" class="content">
+        <div class="empty">正在连接本地知识库…</div>
+      </div>
+    </main>
+    <div id="drawer-backdrop" class="backdrop" hidden></div>
+    <aside
+      id="drawer"
+      class="drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="资料编辑器"
+      hidden
+    ></aside>
+    <dialog id="confirm-dialog"></dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

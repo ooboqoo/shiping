@@ -200,7 +200,7 @@ export function resolveLinkedModel({
   const translated = model ? translateModel(model, provider) : undefined
   if (translated) return { model: translated, reason: 'translated' }
   if (remembered) return { model: remembered, reason: 'remembered' }
-  return { model: provider.defaultModel, reason: 'default' }
+  return model ? { model: '', reason: 'default' } : null
 }
 
 /** A model reported by the platform's `/models` endpoint */

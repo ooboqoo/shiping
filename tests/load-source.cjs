@@ -18,6 +18,6 @@ module.exports = function loadSource(file, mocks = {}, cache = new Map()) {
     }
     return require(id)
   }
-  new Function('require', 'module', 'exports', code)(localRequire, mod, mod.exports)
+  new Function('require', 'module', 'exports', '__dirname', code)(localRequire, mod, mod.exports, path.dirname(file))
   return mod.exports
 }

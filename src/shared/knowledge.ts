@@ -12,15 +12,32 @@ export interface KnowledgeDoc {
   source?: string
   /** Full path of that file, for 「重新导入」 */
   sourcePath?: string
+  /** Atomic on-disk text revision; absent for legacy id.txt storage. */
+  storageFile?: string
   chars: number
   /** Rough estimate, see `estimateTokens` */
   tokens: number
   /** Modes whose requests carry it; empty means it is kept but not sent */
   modes: AppMode[]
   updatedAt: number
+  /** Local web management retains removed sources in its recycle bin. */
+  deletedAt?: number
+  tags?: string[]
+  /** Optimistic edit token returned by main; never an authoritative disk field. */
+  version?: string
 }
 
-export type KnowledgePatch = Partial<Pick<KnowledgeDoc, 'name' | 'modes'>> & { text?: string }
+export type KnowledgePatch = Partial<Pick<KnowledgeDoc, 'name' | 'modes'>> & {
+  text?: string
+  version?: string
+}
+
+export function mergeKnowledgeDocs(
+  existing: KnowledgeDoc[],
+  incoming: KnowledgeDoc[]
+): KnowledgeDoc[] {
+  return [...new Map([...existing, ...incoming].map((doc) => [doc.id, doc])).values()]
+}
 
 export interface KnowledgeImportResult {
   added: KnowledgeDoc[]
@@ -34,7 +51,19 @@ export interface KnowledgeImportResult {
 export const KNOWLEDGE_CHAR_LIMIT = 30000
 
 /** File types the importer reads */
-export const KNOWLEDGE_EXTENSIONS = ['pdf', 'docx', 'md', 'markdown', 'txt']
+export const KNOWLEDGE_EXTENSIONS = [
+  'pdf',
+  'docx',
+  'md',
+  'markdown',
+  'txt',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'xlsx',
+  'pptx'
+]
 
 const CJK = /[\u3000-\u303f\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g
 

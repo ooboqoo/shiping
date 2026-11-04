@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import './legacy-name'
-import { app, desktopCapturer, globalShortcut, session } from 'electron'
+import { app, desktopCapturer, globalShortcut, session, ipcMain } from 'electron'
 
 type AbortLikeError = {
   name?: string
@@ -31,7 +31,11 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { syncShortcuts } from './shortcuts'
 import './transcription'
 import './conversation'
-import './knowledge'
+import { getRemoteLibrary } from './knowledge'
+import { startLibraryRuntime } from './library-v4/desktop-runtime'
+import { ModelSync } from './library-v4/model-sync'
+import { detectSystemProxy } from './proxy'
+import './rag/ipc'
 import './window-resize'
 import './model-list'
 import './proxy-ipc'
@@ -39,7 +43,22 @@ import './mobile-sync'
 import './tray'
 import { createWindow } from './main-window'
 import { initAutoUpdater } from './auto-updater'
-import { applyDockVisibility } from './settings'
+import { applyDockVisibility, settings, getModeProfile, onSettingsChanged } from './settings'
+import { startAdminBridge } from './rag/admin-bridge'
+
+const remoteLibrary = getRemoteLibrary()
+if (remoteLibrary) {
+  const sync = new ModelSync(
+    () => ({ profile: getModeProfile('conversation'), proxy: settings.networkProxy }),
+    detectSystemProxy,
+    (profile, version, signal) =>
+      remoteLibrary.call('configureModel', [profile, 'desktop', version], signal)
+  )
+  onSettingsChanged(() => sync.notify())
+  void app.whenReady().then(() => sync.notify())
+  ipcMain.handle('library:modelSyncStatus', () => sync.status())
+  app.once('before-quit', () => sync.close())
+}
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -98,6 +117,8 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  void startLibraryRuntime().catch(() => console.error('内置知识库暂未就绪，请在模型设置中重试'))
+  void startAdminBridge().catch(() => console.error('本机资料管理连接启动失败'))
 
   // Configure auto-updater
   initAutoUpdater()

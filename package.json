@@ -18,12 +18,14 @@
     "typecheck:web": "tsc -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
-    "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "dev": "npm run build:documents && electron-vite dev",
+    "build": "npm run typecheck && electron-vite build && npm run build:documents",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac"
+    "build:mac": "npm run build && electron-builder --mac",
+    "setup:ocr": "node scripts/setup-ocr.cjs",
+    "build:documents": "node scripts/build-documents.cjs"
   },
   "repository": {
     "type": "git",
@@ -78,7 +80,15 @@
     "unpdf": "^1.8.1",
     "ws": "^8.20.0",
     "zod": "^4.0.17",
-    "zustand": "^5.0.8"
+    "zustand": "^5.0.8",
+    "@napi-rs/canvas": "0.1.80",
+    "fast-xml-parser": "5.11.2",
+    "image-size": "2.0.4",
+    "tesseract.js": "6.0.1",
+    "yauzl": "3.4.0",
+    "http-proxy-agent": "7.0.2",
+    "https-proxy-agent": "7.0.6",
+    "jszip": "3.10.1"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

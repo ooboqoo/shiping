@@ -1,4 +1,4 @@
-import { findProvider, knownVision } from './providers'
+import { knownVision } from './providers'
 import type { ApiProfile } from '../../../shared/api-profile'
 
 export type { ApiProfile }
@@ -13,7 +13,7 @@ export function createProfileId(): string {
 
 export function createProfile(partial?: Partial<ApiProfile>): ApiProfile {
   const baseURL = partial?.apiBaseURL ?? ''
-  const model = partial?.model ?? findProvider(baseURL)?.defaultModel ?? ''
+  const model = partial?.model ?? ''
   return {
     id: createProfileId(),
     name: partial?.name || '新配置',

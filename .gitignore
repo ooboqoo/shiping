@@ -5,3 +5,12 @@ dist
 .eslintcache
 *.log*
 .env*
+
+node_modules
+.superpowers/
+
+# Local OCR language assets; prepared explicitly, never committed
+resources/ocr/
+
+# Generated bundled library UI (source: library-web/public)
+resources/library-web/

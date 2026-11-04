@@ -1,0 +1,2 @@
+const test=require('node:test'),assert=require('node:assert/strict'),load=require('./load-source.cjs')
+test('model compatibility probe is reused until model digest changes',async()=>{let digest='one',probes=0;const {fingerprint}=load('src/main/library-v4/runtime.ts',{'../rag/client':{request:async()=>({models:[{name:'bge-m3:latest',digest}]}),embed:async()=>{probes++;return [[1,2,3]]}}});await Promise.all([fingerprint(),fingerprint()]);await fingerprint();assert.equal(probes,1);digest='two';assert.match(await fingerprint(),/two/);assert.equal(probes,2)})

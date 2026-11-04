@@ -1,3 +1,11 @@
+import type {
+  LibraryModelKind,
+  LibraryModelDraft,
+  LibraryModelSettings,
+  LibraryProviderModel,
+  LibraryModelTest
+} from '../shared/library-models'
+import type { RagStatus, RagHit } from '../shared/rag'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../main/settings'
@@ -17,6 +25,26 @@ import type { ApiProfile } from '../shared/api-profile'
 
 // Custom APIs for renderer
 const api = {
+  openLibraryManager: (task?: string) => ipcRenderer.invoke('library:open-manager', task) as Promise<void>,
+  getLibraryModelSettings: () =>
+    ipcRenderer.invoke('rag:models:status') as Promise<LibraryModelSettings>,
+  saveLibraryModel: (kind: LibraryModelKind, config: LibraryModelDraft) =>
+    ipcRenderer.invoke('rag:models:save', kind, config) as Promise<LibraryModelSettings>,
+  listLibraryModels: (kind: LibraryModelKind, config: LibraryModelDraft) =>
+    ipcRenderer.invoke('rag:models:list', kind, config) as Promise<LibraryProviderModel[]>,
+  testLibraryModel: (kind: LibraryModelKind, config: LibraryModelDraft) =>
+    ipcRenderer.invoke('rag:models:test', kind, config) as Promise<LibraryModelTest>,
+  setLibraryRerank: (enabled: boolean) =>
+    ipcRenderer.invoke('rag:models:rerank', enabled) as Promise<{
+      reranker: boolean
+      model: string
+    }>,
+  ragStatus: () => ipcRenderer.invoke('rag:status') as Promise<RagStatus>,
+  ragCheck: () => ipcRenderer.invoke('rag:check') as Promise<string>,
+  ragRebuild: () => ipcRenderer.invoke('rag:rebuild') as Promise<void>,
+  ragClear: () => ipcRenderer.invoke('rag:clear') as Promise<void>,
+  ragPreview: (mode: 'conversation' | 'screenshot', query: string) =>
+    ipcRenderer.invoke('rag:preview', mode, query) as Promise<RagHit[]>,
   // Get the installed app version (package.json version at build time)
   getAppVersion: () => ipcRenderer.invoke('getAppVersion') as Promise<string>,
   // A newer release main found (null: none); Windows downloads and installs it on request
@@ -383,20 +411,51 @@ const api = {
   },
 
   // 资料库: main keeps the material on disk and puts it into each mode's system prompt
+  listKnowledgeLibraries: () => ipcRenderer.invoke('knowledge:libraries') as Promise<{ selected: string; libraries: {id: string; name: string}[] }>,
+  selectKnowledgeLibrary: (id: string) => ipcRenderer.invoke('knowledge:select-library', id),
   listKnowledge: () => ipcRenderer.invoke('knowledge:list') as Promise<KnowledgeDoc[]>,
+  onKnowledgeChanged: (callback: () => void) => {
+    ipcRenderer.on('knowledge:changed', callback)
+    return () => ipcRenderer.removeListener('knowledge:changed', callback)
+  },
   getKnowledgeText: (id: string) => ipcRenderer.invoke('knowledge:get-text', id) as Promise<string>,
+  getKnowledgeDocument: (id: string) =>
+    ipcRenderer.invoke('knowledge:get-document', id) as Promise<{
+      doc: KnowledgeDoc
+      text: string
+    }>,
   // Open a file dialog and import what was picked; null if cancelled
   pickKnowledgeFiles: () =>
     ipcRenderer.invoke('knowledge:pick-files') as Promise<KnowledgeImportResult | null>,
+  selectKnowledgeFiles: () => ipcRenderer.invoke('knowledge:select-files') as Promise<string[]>,
+  uploadKnowledgeFile: (path: string, submission: string, project?: string) =>
+    ipcRenderer.invoke('knowledge:upload', path, submission, project),
+  cancelKnowledgeUpload: (submission: string) =>
+    ipcRenderer.invoke('knowledge:cancel-upload', submission),
+  knowledgeUploadState: (jobId: string, project?: string) => ipcRenderer.invoke('knowledge:upload-state', jobId, project),
+  onKnowledgeUploadProgress: (
+    callback: (value: { submission: string; loaded: number; total: number }) => void
+  ) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      value: { submission: string; loaded: number; total: number }
+    ) => callback(value)
+    ipcRenderer.on('knowledge:upload-progress', listener)
+    return () => ipcRenderer.removeListener('knowledge:upload-progress', listener)
+  },
   importKnowledgeFiles: (paths: string[]) =>
     ipcRenderer.invoke('knowledge:import-files', paths) as Promise<KnowledgeImportResult>,
   createKnowledge: (name: string, text: string) =>
     ipcRenderer.invoke('knowledge:create', name, text) as Promise<KnowledgeDoc>,
   updateKnowledge: (id: string, patch: KnowledgePatch) =>
     ipcRenderer.invoke('knowledge:update', id, patch) as Promise<KnowledgeDoc | null>,
-  reimportKnowledge: (id: string) =>
-    ipcRenderer.invoke('knowledge:reimport', id) as Promise<{ doc?: KnowledgeDoc; error?: string }>,
-  removeKnowledge: (id: string) => ipcRenderer.invoke('knowledge:remove', id) as Promise<void>,
+  reimportKnowledge: (id: string, version: string | undefined) =>
+    ipcRenderer.invoke('knowledge:reimport', id, version) as Promise<{
+      doc?: KnowledgeDoc
+      error?: string
+    }>,
+  removeKnowledge: (id: string, version: string | undefined) =>
+    ipcRenderer.invoke('knowledge:remove', id, version) as Promise<void>,
   // Where a dropped file lives on disk (`File.path` is gone since Electron 32)
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 

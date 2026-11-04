@@ -5,15 +5,15 @@ import { DEFAULT_API_BASE_URL, type ApiProfile, type AppMode } from '../shared/a
 import { buildRequestHeaders } from '../shared/request-headers'
 import { createThinkingOffFetch } from './thinking'
 import { apiFetch } from './api-fetch'
-import { getKnowledgePrompt } from './knowledge'
+import { getRagContext } from './rag/service'
 import type { StreamChunk } from './stream'
 
 // The system prompts are fully managed by the renderer (prompt scenes in the
 // settings store, one active scene per mode) and synced here via
 // updateAppSettings on app startup. The mode's 资料库 material goes first
-function getSystemPrompt(mode: AppMode, extra?: string) {
+function getSystemPrompt(mode: AppMode, knowledge: string, extra?: string) {
   const prompt = mode === 'screenshot' ? settings.customPrompt : settings.conversationPrompt
-  return [getKnowledgePrompt(mode), prompt, extra].filter(Boolean).join('\n\n') || undefined
+  return [knowledge, prompt, extra].filter(Boolean).join('\n\n') || undefined
 }
 
 /** Tell the user once that the active model ignores the profile's 「关闭思考」 */
@@ -60,25 +60,27 @@ async function* streamChunks(
   }
 }
 
-function streamWith(
+async function* streamWith(
   mode: AppMode,
   messages: ModelMessage[],
   abortSignal: AbortSignal | undefined,
   extraSystem?: string
 ) {
+  const knowledge = await getRagContext(mode, messages, abortSignal)
+  abortSignal?.throwIfAborted()
   const profile = getModeProfile(mode)
   const openai = createProvider(profile)
 
   const { fullStream } = streamText({
     model: openai.chatModel(getModel(profile)),
-    system: getSystemPrompt(mode, extraSystem),
+    system: getSystemPrompt(mode, knowledge, extraSystem),
     messages,
     abortSignal,
     onError: (err) => {
       throw err.error ?? err
     }
   })
-  return streamChunks(fullStream)
+  yield* streamChunks(fullStream)
 }
 
 export function getSolutionStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
