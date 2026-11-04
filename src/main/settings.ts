@@ -3,6 +3,7 @@ import type { CaptureRegion } from '../shared/capture-region'
 import type { ApiProfile, AppMode } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
 import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
+import { createToolbarButtons } from '../shared/toolbar'
 import { DEFAULT_PROXY, normalizeProxySettings } from '../shared/proxy'
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE,
@@ -51,10 +52,11 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   if ('opacity' in _settings) {
     setToolbarOpacity(settings.opacity)
   }
-  if ('toolbarHoverDelay' in _settings || 'theme' in _settings) {
+  if ('toolbarHoverDelay' in _settings || 'theme' in _settings || 'toolbarButtons' in _settings) {
     syncToolbarSettings({
       hoverDelay: settings.toolbarHoverDelay,
-      theme: settings.theme
+      theme: settings.theme,
+      buttons: settings.toolbarButtons
     })
   }
 })
@@ -143,6 +145,8 @@ export const settings = {
    * renderer fields from here, so a truthy default would overwrite a user's "off".
    */
   toolbarHoverDelay: 0,
+  /** The buttons the user turned on or off per mode, see shared/toolbar.ts */
+  toolbarButtons: createToolbarButtons(),
   /** Screen to capture: `cursor` follows the mouse, anything else is a fixed `Display.id` */
   captureScreen: 'cursor',
   /** Crop every screenshot to this area of one screen; null captures the whole screen */

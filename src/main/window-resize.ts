@@ -1,5 +1,4 @@
 import { BrowserWindow, ipcMain, screen, type Rectangle } from 'electron'
-import { noteToolbarResize } from './toolbar-window'
 
 export type ResizeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 
@@ -14,7 +13,7 @@ type ResizeState = {
 }
 
 const MIN_WIDTH = 200
-/** Only the main window resizes vertically; low enough to leave it a usable header strip */
+/** Low enough to leave the main window a usable header strip */
 const MIN_HEIGHT = 36
 /** Cursor sampling interval while dragging, roughly one frame */
 const POLL_INTERVAL = 16
@@ -26,10 +25,10 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let safetyTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
- * The cursor is sampled here instead of being sent from the renderer: the overlay
- * toolbar is a non-activating panel on macOS and never receives the pointer moves
- * of a drag, so renderer-side tracking silently does nothing there. A pointerdown
- * and a pointerup are all the renderer has to deliver.
+ * The cursor is sampled here instead of being sent from the renderer, which
+ * would need pointer capture to keep getting moves once the cursor leaves the
+ * window, and capture is best-effort on a macOS panel (see WindowResizeHandles).
+ * A pointerdown and a pointerup are all the renderer has to deliver.
  */
 ipcMain.on('window-resize-start', (event, direction: ResizeDirection) => {
   const window = BrowserWindow.fromWebContents(event.sender)
@@ -67,11 +66,8 @@ function trackCursor(): void {
   resizeState.lastY = y
 
   // Every frame is derived from the bounds snapshotted at drag start, so the
-  // rounding of a single getBounds() cannot accumulate. The toolbar is told the
-  // size it ends up with, because its own sync must never read it back.
-  const bounds = resizeBounds(resizeState, x, y)
-  resizeState.window.setBounds(bounds)
-  noteToolbarResize(resizeState.window, bounds.width, bounds.height)
+  // rounding of a single getBounds() cannot accumulate
+  resizeState.window.setBounds(resizeBounds(resizeState, x, y))
 }
 
 function stopResize(): void {

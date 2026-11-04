@@ -68,8 +68,8 @@
   @apply flex h-11 items-center gap-0.5 rounded-md p-2;
   background: var(--app-panel-bg);
   color: var(--app-panel-fg);
-  /* Drawn inside the box: a real border would steal 2px from the window height
-     the button-fit measurement in OverlayToolbar is calibrated against */
+  /* Drawn inside the box: a real border would steal 2px from the window size
+     main computes for the buttons (toolbarWidth() in shared/toolbar.ts) */
   outline: 1px solid var(--app-panel-border);
   outline-offset: -1px;
   box-shadow: var(--app-panel-shadow);
@@ -166,28 +166,10 @@ body:has(.overlay-toolbar-root) {
 }
 
 /*
- * Resizing the toolbar window never rescales its buttons: the bar simply takes
- * the whole window, and OverlayToolbar drops the buttons that no longer fit.
- * `overflow` is the backstop for the rounding the button count cannot cover.
+ * The bar takes the whole window, which main sizes to its buttons. `overflow`
+ * is the backstop for a window rounded a pixel short at fractional scaling.
  */
 .overlay-toolbar-root {
   height: 100vh;
   overflow: hidden;
-}
-
-/*
- * The toolbar can always be resized, but its edges must stay silent: a resize
- * cursor flickering under the pointer is the very thing the main window's
- * setting exists to avoid. macOS suppresses it anyway (it only updates the
- * cursor for the active window, which this one can never be); Windows does not.
- */
-body:has(.overlay-toolbar-root) .window-resize-handle {
-  cursor: default;
-}
-
-/* Width-only resizing has no corner handles to leave room for */
-.window-resize-e.window-resize-no-corners,
-.window-resize-w.window-resize-no-corners {
-  top: 0;
-  bottom: 0;
 }

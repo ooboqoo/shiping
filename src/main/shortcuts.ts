@@ -7,8 +7,11 @@ import {
   hideToolbar,
   setToolbarWanted,
   reassertToolbarTopMost,
-  sendToToolbar
+  sendToToolbar,
+  setToolbarWidth
 } from './toolbar-window'
+import { TOOLBAR_LAYOUT, toolbarActions, toolbarWidth } from '../shared/toolbar'
+import type { AppMode } from '../shared/api-profile'
 import { takeScreenshot } from './take-screenshot'
 import { pickCaptureRegion, pickScreenshot } from './region-picker'
 import type { CaptureRegion } from '../shared/capture-region'
@@ -390,6 +393,16 @@ function broadcastAppState(): void {
   sendToToolbar('sync-app-state', state)
 }
 
+/** The mode whose buttons the toolbar shows: 截图模式's off the mode pages, as its renderer does */
+function toolbarMode(): AppMode {
+  return state.inConversationPage ? 'conversation' : 'screenshot'
+}
+
+/** Size the toolbar to the buttons it shows; on a page change, or when the user picks others */
+function syncToolbarWidth(): void {
+  setToolbarWidth(toolbarWidth(toolbarActions(toolbarMode(), settings.toolbarButtons).length))
+}
+
 /**
  * Turn click-through on or off. Independent of the overlay toolbar: the
  * toolbar is one way to operate the window, not a requirement, so hiding it
@@ -411,6 +424,8 @@ setPageChangeHandler(() => {
   setSnipSession(false)
   applyIgnoreMouse()
   broadcastAppState()
+  // The toolbar now shows the other mode's buttons
+  syncToolbarWidth()
   // The phones follow the mode on screen
   markMobileDirty()
   // The page decides which actions have anything to do
@@ -945,28 +960,6 @@ export function hasScreenshotConversation(): boolean {
   return conversationMessages.length > 0
 }
 
-const clickableActions = new Set([
-  'takeScreenshot',
-  'appendScreenshot',
-  'stopSolutionStream',
-  'ignoreOrEnableMouse',
-  'increaseOpacity',
-  'decreaseOpacity',
-  'pageUp',
-  'pageDown',
-  'moveMainWindowUp',
-  'moveMainWindowDown',
-  'moveMainWindowLeft',
-  'moveMainWindowRight',
-  'toggleTranscription',
-  'clearTranscription',
-  'pickCaptureRegion',
-  'cycleScene',
-  'generateHint',
-  'toggleHintMode',
-  'switchMode'
-])
-
 type ShortcutPage = 'any' | 'mode' | 'screenshot' | 'conversation'
 
 /**
@@ -1153,9 +1146,11 @@ ipcMain.handle('setShortcutRecording', (_event, recording: boolean) => {
   syncShortcuts()
 })
 
-// The voice actions need the DashScope key
 onSettingsChanged((previous) => {
+  // The voice actions need the DashScope key
   if (previous.dashscopeApiKey !== settings.dashscopeApiKey) syncShortcuts()
+  // Runs before settings.ts creates the toolbar window, which then opens at its size
+  syncToolbarWidth()
 })
 
 // Hidden, the window's place is taken by the phones watching, if any
@@ -1163,8 +1158,15 @@ onMobileViewersChanged(syncShortcuts)
 
 ipcMain.handle('stopSolutionStream', () => stopAnswer())
 
+/**
+ * A toolbar click. Only for a button the current mode offers at all: a click on
+ * a toolbar still showing the other mode's buttons must not reach an action
+ * this mode keeps off the toolbar (对话模式's clearTranscription wipes the
+ * conversation). Whether the user has turned the button on is the toolbar's affair
+ */
 ipcMain.handle('triggerAction', (_event, action: string) => {
-  if (!clickableActions.has(action)) return false
+  const offered = TOOLBAR_LAYOUT[toolbarMode()].some((slot) => slot.action === action)
+  if (!offered) return false
   callbacks[action]?.()
   return true
 })

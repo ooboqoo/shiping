@@ -3,25 +3,9 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 
 type ResizeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 
-const ALL_DIRECTIONS: ResizeDirection[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
-/** Width-only: a window whose height is dictated by its content, e.g. the toolbar */
-const HORIZONTAL_DIRECTIONS: ResizeDirection[] = ['e', 'w']
+const DIRECTIONS: ResizeDirection[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
 
-export function WindowResizeHandles({
-  enabled,
-  axis = 'both',
-  nonActivating = false
-}: {
-  enabled: boolean
-  axis?: 'both' | 'x'
-  /**
-   * Set for a window that can never be activated (the overlay toolbar): Windows
-   * discards the press that lands on one, so the drag has to be picked up from
-   * the first move made with the button already down. Left off elsewhere — in a
-   * normal window that move is someone dragging a selection past the edge.
-   */
-  nonActivating?: boolean
-}) {
+export function WindowResizeHandles({ enabled }: { enabled: boolean }) {
   const isResizing = useRef(false)
 
   const stopResize = useCallback(() => {
@@ -31,9 +15,9 @@ export function WindowResizeHandles({
   }, [])
 
   // The handle itself cannot be trusted to see the pointerup: capture does not
-  // work on the macOS non-activating toolbar panel, and releasing after the
-  // window hit its minimum size leaves the cursor off the handle. Main follows
-  // the cursor until it is told to stop, so listen as widely as we can.
+  // work on a macOS panel, and releasing after the window hit its minimum size
+  // leaves the cursor off the handle. Main follows the cursor until it is told
+  // to stop, so listen as widely as we can.
   useEffect(() => {
     if (!enabled) return
     window.addEventListener('pointerup', stopResize)
@@ -62,27 +46,14 @@ export function WindowResizeHandles({
     }
   }
 
-  const horizontalOnly = axis === 'x'
-  const directions = horizontalOnly ? HORIZONTAL_DIRECTIONS : ALL_DIRECTIONS
-
-  return directions.map((direction) => (
+  return DIRECTIONS.map((direction) => (
     <div
       key={direction}
-      className={`window-resize-handle window-resize-${direction}${
-        horizontalOnly ? ' window-resize-no-corners' : ''
-      }`}
+      className={`window-resize-handle window-resize-${direction}`}
       onPointerDown={(event) => {
         if (event.button !== 0) return
         startResize(event, direction)
       }}
-      onPointerMove={
-        nonActivating
-          ? (event) => {
-              if (event.buttons !== 1) return
-              startResize(event, direction)
-            }
-          : undefined
-      }
     />
   ))
 }

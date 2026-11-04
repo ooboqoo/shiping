@@ -215,7 +215,28 @@ const COMMANDS = {
   async action(name) {
     need()
     const ok = await page.evaluate((n) => window.api.triggerAction(n), name)
-    return ok ? `triggered ${name}` : `refused ${name} (not in clickableActions in shortcuts.ts)`
+    return ok
+      ? `triggered ${name}`
+      : `refused ${name} (not a toolbar button of the mode on screen, TOOLBAR_LAYOUT in src/shared/toolbar.ts)`
+  },
+
+  /** `toolbar [name]`: the overlay toolbar window's bounds and buttons, screenshot -> `<name>.png` */
+  async toolbar(name) {
+    need()
+    const bar = app.windows().find((w) => w.url().includes('toolbar'))
+    if (!bar) return 'no toolbar window (悬浮工具条 off, or not created yet)'
+    const bounds = await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((b) =>
+        b.webContents.getURL().includes('toolbar')
+      )
+      return w && { ...w.getBounds(), visible: w.isVisible() }
+    })
+    const buttons = await bar.evaluate(
+      () => document.querySelectorAll('.overlay-toolbar-root button').length
+    )
+    const f = path.join(SHOT_DIR, (name || `toolbar-${Date.now()}`) + '.png')
+    await bar.screenshot({ path: f })
+    return JSON.stringify({ ...bounds, buttons, shot: f })
   },
 
   /** `followup <question>`: ask within the current 截图模式 conversation */

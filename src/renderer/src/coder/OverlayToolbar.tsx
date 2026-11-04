@@ -1,28 +1,27 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { TOOLBAR_ACTIONS, type ToolbarActionName } from '@/lib/toolbar-actions'
+import { shownToolbarActions, type ToolbarActionName } from '@/lib/toolbar-actions'
 import type { LucideIcon } from 'lucide-react'
-import { WindowResizeHandles } from '@/components/WindowResizeHandles'
 import { applyTheme } from '@/lib/theme'
 import { useAppStore } from '@/lib/store/app'
-
-/** Mirrors `.overlay-toolbar` in main.css: `p-2` around `size-7` buttons with `gap-0.5` */
-const BAR_PADDING = 8
-const BUTTON_SIZE = 28
-const BUTTON_GAP = 2
+import { useSettingsStore } from '@/lib/store/settings'
 
 /**
  * Toolbar rendered in its own always-on-top window above the main window.
  * Buttons carry no `title`: a native tooltip would be drawn outside the window
  * and would therefore not be covered by the window's content protection.
+ *
+ * Main sizes the window to the buttons (`toolbarWidth()` in shared/toolbar.ts),
+ * from the same list and choice this renders.
  */
 export function OverlayToolbar() {
   const [hoverDelay, setHoverDelay] = useState(0)
-  const barRef = useRef<HTMLDivElement>(null)
+  // This window's store is a copy loaded from localStorage when it opened, right
+  // at first paint; later changes are only seen through main's pushes below
+  const [buttons, setButtons] = useState(() => useSettingsStore.getState().toolbarButtons)
   const syncAppState = useAppStore((state) => state.syncAppState)
   const inConversationPage = useAppStore((state) => state.inConversationPage)
-  const actions = TOOLBAR_ACTIONS[inConversationPage ? 'conversation' : 'screenshot']
-  const visibleCount = useVisibleActionCount(barRef, actions.length)
+  const actions = shownToolbarActions(inConversationPage ? 'conversation' : 'screenshot', buttons)
 
   // This window's store is its own copy, so the state main pushes has to be
   // relayed here; otherwise the toolbar's own buttons show stale state. The
@@ -42,9 +41,10 @@ export function OverlayToolbar() {
     window.api.getAppSettings().then((settings) => {
       setHoverDelay(settings.toolbarHoverDelay || 0)
     })
-    window.api.onSyncToolbarSettings(({ hoverDelay, theme }) => {
+    window.api.onSyncToolbarSettings(({ hoverDelay, theme, buttons }) => {
       setHoverDelay(hoverDelay || 0)
       applyTheme(theme)
+      setButtons(buttons)
     })
     return () => {
       window.api.removeSyncToolbarSettingsListener()
@@ -52,47 +52,12 @@ export function OverlayToolbar() {
   }, [])
 
   return (
-    <div ref={barRef} className="overlay-toolbar overlay-toolbar-root">
-      {actions.slice(0, visibleCount).map(({ action, Icon }) => (
+    <div className="overlay-toolbar overlay-toolbar-root">
+      {actions.map(({ action, Icon }) => (
         <ToolbarButton key={action} action={action} Icon={Icon} hoverDelay={hoverDelay} />
       ))}
-      {/* Always on, width only: the height is the button row. main.css keeps
-          these edges from ever showing a resize cursor. `nonActivating` because
-          Windows eats this window's presses, see ToolbarButton below */}
-      <WindowResizeHandles enabled axis="x" nonActivating />
     </div>
   )
-}
-
-/**
- * Buttons keep their size when the toolbar window is resized; the ones that no
- * longer fit are dropped from the end, so a narrowed toolbar never shows a
- * sliver of a button. The bar's own width never depends on its children, so
- * measuring it here cannot feed back into the layout.
- */
-function useVisibleActionCount(
-  barRef: RefObject<HTMLDivElement | null>,
-  actionCount: number
-): number {
-  const [count, setCount] = useState(actionCount)
-
-  useEffect(() => {
-    const bar = barRef.current
-    if (!bar) return
-
-    const measure = () => {
-      const available = bar.clientWidth - BAR_PADDING * 2
-      const fits = Math.floor((available + BUTTON_GAP) / (BUTTON_SIZE + BUTTON_GAP))
-      setCount(Math.min(actionCount, Math.max(1, fits)))
-    }
-
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(bar)
-    return () => observer.disconnect()
-  }, [barRef, actionCount])
-
-  return count
 }
 
 /**

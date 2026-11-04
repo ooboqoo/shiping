@@ -10,6 +10,7 @@ import type { CaptureRegion, RegionRect } from '../shared/capture-region'
 import type { TranscriptionOptions } from '../main/transcription'
 import type { ConversationSnapshot, HintCard, Utterance } from '../shared/conversation'
 import type { KnowledgeDoc, KnowledgeImportResult, KnowledgePatch } from '../shared/knowledge'
+import type { ToolbarActionName, ToolbarButtons } from '../shared/toolbar'
 import type { AvailableUpdate } from '../shared/update'
 import type { MobileSyncStatus } from '../shared/mobile'
 import type { ProxySettings, ProxyDetection, ProxyTestResult } from '../shared/proxy'
@@ -93,29 +94,9 @@ const api = {
   setShortcutRecording: (recording: boolean) =>
     ipcRenderer.invoke('setShortcutRecording', recording),
 
-  // Trigger the small set of user-facing actions exposed by the overlay toolbar.
-  triggerAction: (
-    action:
-      | 'takeScreenshot'
-      | 'appendScreenshot'
-      | 'stopSolutionStream'
-      | 'ignoreOrEnableMouse'
-      | 'increaseOpacity'
-      | 'decreaseOpacity'
-      | 'pageUp'
-      | 'pageDown'
-      | 'moveMainWindowUp'
-      | 'moveMainWindowDown'
-      | 'moveMainWindowLeft'
-      | 'moveMainWindowRight'
-      | 'toggleTranscription'
-      | 'clearTranscription'
-      | 'pickCaptureRegion'
-      | 'cycleScene'
-      | 'generateHint'
-      | 'toggleHintMode'
-      | 'switchMode'
-  ) => ipcRenderer.invoke('triggerAction', action),
+  // Run the action of an overlay toolbar button; false when the mode on screen offers no such button
+  triggerAction: (action: ToolbarActionName) =>
+    ipcRenderer.invoke('triggerAction', action) as Promise<boolean>,
   setToolbarVisible: (visible: boolean) => ipcRenderer.invoke('setToolbarVisible', visible),
   // Set click-through from the settings page; returns the state main ended up in
   setIgnoreMouse: (ignore: boolean) =>
@@ -123,7 +104,11 @@ const api = {
 
   // Settings the toolbar window needs, pushed from main (its own store is a separate copy)
   onSyncToolbarSettings: (
-    callback: (settings: { hoverDelay: number; theme: 'dark' | 'light' }) => void
+    callback: (settings: {
+      hoverDelay: number
+      theme: 'dark' | 'light'
+      buttons: ToolbarButtons
+    }) => void
   ) => {
     ipcRenderer.on('sync-toolbar-settings', (_event, settings) => {
       callback(settings)

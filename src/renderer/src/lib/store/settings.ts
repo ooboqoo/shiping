@@ -24,6 +24,13 @@ import {
   normalizeExternalKnowledge,
   type ExternalKnowledgeSettings
 } from '../../../../shared/external-knowledge'
+import {
+  TOOLBAR_LAYOUT,
+  createToolbarButtons,
+  normalizeToolbarButtons,
+  type ToolbarActionName,
+  type ToolbarButtons
+} from '../../../../shared/toolbar'
 
 export type { Theme }
 export type { ApiProfile }
@@ -262,7 +269,7 @@ interface Settings {
   removedPresetSceneIds: string[]
 
   opacity: number
-  /** Allow resizing the main window and overlay toolbar */
+  /** Allow resizing the main window */
   resizable: boolean
   /** Show the click-through overlay toolbar above the main window */
   showOverlayToolbar: boolean
@@ -270,6 +277,8 @@ interface Settings {
   hideShortcutHints: boolean
   /** Dwell time in ms before hovering a toolbar button fires it; 0 disables hover triggering */
   toolbarHoverDelay: number
+  /** The toolbar buttons the user turned on or off per mode; the rest keep their default */
+  toolbarButtons: ToolbarButtons
   /** How the captured screenshots are shown above the solution */
   screenshotDisplay: ScreenshotDisplay
   /** 截取哪块屏幕：`cursor` 跟随鼠标，其余为固定屏幕的 `Display.id` */
@@ -382,6 +391,10 @@ interface SettingsStore extends Settings {
   removeScene: (id: string) => boolean
   /** Bring back a mode's deleted preset scenes, with their default prompts */
   restorePresetScenes: (mode: AppMode) => void
+  /** Show or hide one of a mode's toolbar buttons; refuses to hide its last one */
+  setToolbarButton: (mode: AppMode, action: ToolbarActionName, shown: boolean) => boolean
+  /** Back to a mode's default buttons */
+  resetToolbarButtons: (mode: AppMode) => void
 }
 
 const defaultSettings: Settings = {
@@ -417,6 +430,7 @@ const defaultSettings: Settings = {
   showOverlayToolbar: true,
   hideShortcutHints: false,
   toolbarHoverDelay: 1000,
+  toolbarButtons: createToolbarButtons(),
   screenshotDisplay: 'gallery',
   captureScreen: CAPTURE_SCREEN_CURSOR,
   captureRegion: null,
@@ -768,6 +782,19 @@ export const useSettingsStore = create<SettingsStore>()(
             ...composePrompts(scenes, state.activeSceneId, state.conversationSceneId)
           }
         })
+      },
+      setToolbarButton: (mode, action, shown) => {
+        const state = get()
+        const choice = { ...state.toolbarButtons[mode], [action]: shown }
+        // No toolbar at all is what the 悬浮工具条 switch is for
+        if (!TOOLBAR_LAYOUT[mode].some((slot) => choice[slot.action] ?? slot.defaultOn)) {
+          return false
+        }
+        set({ toolbarButtons: { ...state.toolbarButtons, [mode]: choice } })
+        return true
+      },
+      resetToolbarButtons: (mode) => {
+        set((state) => ({ toolbarButtons: { ...state.toolbarButtons, [mode]: {} } }))
       }
     }),
     {
@@ -807,6 +834,7 @@ export const useSettingsStore = create<SettingsStore>()(
           state.networkProxy = { ...DEFAULT_PROXY }
         }
         state.externalKnowledge = normalizeExternalKnowledge(state.externalKnowledge)
+        state.toolbarButtons = normalizeToolbarButtons(state.toolbarButtons)
         // Rebuild the presets on every load, so ones added in a later version
         // show up for existing users; the ones the user deleted stay out
         const persistedScenes = Array.isArray(state.scenes) ? state.scenes : []

@@ -13,6 +13,7 @@ import { useAppStore } from '@/lib/store/app'
 import type { Theme } from '@/lib/theme'
 import { isMac } from '@/lib/utils/env'
 import { Field, SettingsCard } from '../components'
+import { ToolbarButtonsField } from '../ToolbarButtonsField'
 
 const trayIconLabel = isMac ? '隐藏状态栏图标' : '隐藏托盘图标'
 const trayIconPlace = isMac ? '屏幕顶部状态栏' : '任务栏右下角'
@@ -99,7 +100,7 @@ export function AppearanceSection() {
 
           <Field
             label="悬浮工具条"
-            note="在主窗口上方显示一排按钮，可用鼠标点击替代快捷键操作，按钮随模式变化，详见帮助中心"
+            note="在主窗口上方显示一排按钮，可用鼠标点击替代快捷键操作，按钮随模式变化、可在下方增减，详见帮助中心"
           >
             <Switch
               className="scale-y-90"
@@ -129,6 +130,12 @@ export function AppearanceSection() {
                 </SelectContent>
               </Select>
             </Field>
+          )}
+
+          {showOverlayToolbar && (
+            <div className="pl-4 border-l-2 border-gray-400/70">
+              <ToolbarButtonsField />
+            </div>
           )}
         </div>
       </SettingsCard>

@@ -2,10 +2,14 @@ import { join } from 'node:path'
 import { BrowserWindow, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { registerStealthWindow } from './window-privacy'
+import {
+  TOOLBAR_HEIGHT,
+  createToolbarButtons,
+  toolbarActions,
+  toolbarWidth,
+  type ToolbarButtons
+} from '../shared/toolbar'
 
-/** Room for every button of the longer mode's toolbar: 16 × 28px, 2px gaps, 8px padding each side */
-const TOOLBAR_WIDTH = 494
-const TOOLBAR_HEIGHT = 44
 const TOOLBAR_INSET = 4
 /** Mirrors the renderer's default opacity setting, until the renderer syncs the real one */
 const DEFAULT_OPACITY = 0.8
@@ -16,13 +20,13 @@ let ownerWindow: BrowserWindow | null = null
 let isToolbarWanted = false
 let toolbarOpacity = DEFAULT_OPACITY
 /**
- * The size the user dragged the toolbar to, tracked here instead of being read
+ * The width of the buttons on show, set by `setToolbarWidth()` and never read
  * back off the window. Windows encloses in both directions of the DIP <-> pixel
  * conversion, so at fractional display scaling a getBounds() -> setBounds()
  * round trip hands back a window one pixel larger; syncToolbarBounds runs on
  * every move event of a window drag, which turned that into unbounded growth.
  */
-let toolbarSize = { width: TOOLBAR_WIDTH, height: TOOLBAR_HEIGHT }
+let toolbarWidthPx = toolbarWidth(toolbarActions('screenshot', createToolbarButtons()).length)
 
 /**
  * Click-through alternative to the global shortcuts: a small always-on-top
@@ -59,12 +63,12 @@ function destroyToolbarWindow(): void {
 
 function createToolbarWindow(parent: BrowserWindow): void {
   const window = new BrowserWindow({
-    width: TOOLBAR_WIDTH,
+    width: toolbarWidthPx,
     height: TOOLBAR_HEIGHT,
     frame: false,
     transparent: true,
     hasShadow: false,
-    // Native resize toggling breaks transparency on Windows; renderer handles own resizing.
+    // Sized to its buttons by main alone; native resize toggling also breaks transparency on Windows
     resizable: false,
     // Clicking a button must never pull focus away from what the user is doing
     focusable: false,
@@ -112,9 +116,8 @@ function syncToolbarBounds(): void {
 
   const mainBounds = ownerWindow.getBounds()
   const workArea = screen.getDisplayMatching(mainBounds).workArea
-  // Keep whatever size the user dragged it to; the constants only seed the window
-  const width = Math.min(toolbarSize.width, workArea.width)
-  const height = Math.min(toolbarSize.height, workArea.height)
+  const width = Math.min(toolbarWidthPx, workArea.width)
+  const height = Math.min(TOOLBAR_HEIGHT, workArea.height)
   toolbarWindow.setBounds({
     x: Math.min(Math.max(mainBounds.x, workArea.x), workArea.x + workArea.width - width),
     y: Math.max(workArea.y, mainBounds.y - height - TOOLBAR_INSET),
@@ -139,12 +142,13 @@ export function hideToolbar(): void {
 }
 
 /**
- * Record a size the user dragged the toolbar to, so that syncToolbarBounds can
- * reapply it without ever reading it back from the window.
+ * Fit the toolbar to the buttons of the mode on screen (see `syncToolbarWidth`
+ * in shortcuts.ts). Applied to a hidden window too, so it shows at its size
  */
-export function noteToolbarResize(window: BrowserWindow, width: number, height: number): void {
-  if (window !== toolbarWindow) return
-  toolbarSize = { width, height }
+export function setToolbarWidth(width: number): void {
+  if (width === toolbarWidthPx) return
+  toolbarWidthPx = width
+  syncToolbarBounds()
 }
 
 /**
@@ -187,6 +191,7 @@ export function setToolbarOpacity(opacity: number): void {
 export function syncToolbarSettings(payload: {
   hoverDelay: number
   theme: 'dark' | 'light'
+  buttons: ToolbarButtons
 }): void {
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return
   toolbarWindow.webContents.send('sync-toolbar-settings', payload)

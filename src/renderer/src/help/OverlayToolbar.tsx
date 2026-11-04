@@ -22,15 +22,18 @@ export function OverlayToolbarHelp() {
         <li>开启「鼠标穿透」后主窗口不再响应鼠标，但工具条仍然可以点击。</li>
         <li>工具条的按钮随模式变化：截图模式和对话模式各有一套，最后一个按钮用来切换模式。</li>
         <li>
+          在「设置 → 界面与隐私 → 悬浮工具条」中可以按模式增减按钮，工具条宽度随按钮数量自动调整。
+          下方标「默认不显示」的按钮需要在那里勾选后才会出现。
+        </li>
+        <li>
           在「设置 → 界面与隐私 →
           悬停触发」中可以改为：鼠标在按钮上停留一段时间即触发，全程不产生点击。
           停留过程中按钮下方会有进度条，中途移开即取消；触发后需移开再移回才会再次触发。
         </li>
         <li>
-          拖动工具条的左右边缘可以调整它的宽度（高度固定）。边缘不会出现缩放光标，但照样可以拖。
-          按钮尺寸保持不变，宽度不够时会从右侧开始隐藏放不下的按钮。
+          隐藏/显示主窗口没有做成按钮：窗口隐藏后工具条也会一起隐藏，只能用快捷键唤回；
+          对话模式的清空对话也没有，免得悬停时误触清掉整段对话。
         </li>
-        <li>隐藏/显示主窗口没有做成按钮：窗口隐藏后工具条也会一起隐藏，只能用快捷键唤回。</li>
         <li>如不需要，可在「设置 → 界面与隐私 → 悬浮工具条」中关闭。</li>
       </ul>
     </HelpSection>
@@ -45,20 +48,23 @@ function ToolbarActions({ mode }: { mode: AppMode }) {
     <div className="space-y-2">
       <h3 className="text-sm text-gray-500">{MODE_NAMES[mode]}</h3>
       <div className="overlay-toolbar w-fit">
-        {actions.map(({ action, Icon }) => (
-          <div key={action} className="flex size-7 items-center justify-center">
-            <Icon className="size-4" />
-          </div>
-        ))}
+        {actions
+          .filter(({ defaultOn }) => defaultOn)
+          .map(({ action, Icon }) => (
+            <div key={action} className="flex size-7 items-center justify-center">
+              <Icon className="size-4" />
+            </div>
+          ))}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        {actions.map(({ action, Icon, label }) => (
+        {actions.map(({ action, Icon, label, defaultOn }) => (
           <div
             key={action}
             className="flex items-center gap-2 rounded border border-gray-400 px-2 py-1"
           >
             <Icon className="h-4 w-4 shrink-0" />
             <span className="text-sm">{label}</span>
+            {!defaultOn && <span className="text-xs text-gray-500">默认不显示</span>}
             {shortcuts[action] && (
               <ShortcutRenderer shortcut={shortcuts[action].key} className="ml-auto select-none" />
             )}

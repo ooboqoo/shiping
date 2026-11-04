@@ -94,7 +94,6 @@ export default function App() {
   return (
     <>
       <HashRouter>
-        <ToolbarVisibilityController />
         <WindowResizeController />
         <OpenSettingsController />
         <Routes>
@@ -104,6 +103,9 @@ export default function App() {
           <Route path="help" element={<HelpPage />} />
           <Route path="toolbar" element={<OverlayToolbar />} />
         </Routes>
+        {/* After the routes: effects run in tree order, so the page tells main
+            which mode is up (the toolbar's buttons and width) before this shows it */}
+        <ToolbarVisibilityController />
       </HashRouter>
 
       <Toaster />
@@ -111,7 +113,7 @@ export default function App() {
   )
 }
 
-/** The toolbar window renders its own handles; this covers the main window's routes */
+/** The main window's routes only: the toolbar window is sized by main to its buttons */
 function WindowResizeController() {
   const location = useLocation()
   const resizable = useSettingsStore((state) => state.resizable)
