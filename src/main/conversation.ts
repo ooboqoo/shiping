@@ -33,6 +33,12 @@ import {
 const CONTEXT_UTTERANCES = 20
 const CONTEXT_CHARS = 1500
 
+/**
+ * The 外部知识库 searches with the sentences a hint is for; shorter than this
+ * (「那它呢？」) and the sentence before goes along, so there is something to find
+ */
+const SHORT_QUERY_CHARS = 20
+
 /** The phones get the latest hints and what they answer, not the whole call */
 const MOBILE_HINTS = 20
 const MOBILE_UTTERANCES = 60
@@ -236,6 +242,15 @@ function buildMessages(fromId: number, toId: number, previous?: string): ModelMe
   return [{ role: 'user', content: parts.join('\n\n') }]
 }
 
+/** What the 外部知识库 is asked for a hint on `fromId`..`toId`, see `SHORT_QUERY_CHARS` */
+function hintQuery(fromId: number, toId: number): string {
+  const spoken = utterances.filter((u) => u.id <= toId && u.text.trim())
+  const focus = spoken.filter((u) => u.id >= fromId).map((u) => u.text.trim())
+  const before = spoken.filter((u) => u.id < fromId).at(-1)
+  if (before && focus.join('').length < SHORT_QUERY_CHARS) focus.unshift(before.text.trim())
+  return focus.join('\n')
+}
+
 /** Write (or rewrite) `card` for utterances `fromId`..`toId` */
 async function startHint(
   card: HintCard,
@@ -270,8 +285,9 @@ async function startHint(
   const stream: HintStream = { controller: new AbortController(), startedAt: Date.now() }
   streams.set(card.id, stream)
   const messages = buildMessages(fromId, toId, previous)
+  const query = hintQuery(fromId, toId)
   const outcome = await consumeStream(
-    (signal) => getHintStream(messages, signal),
+    (signal) => getHintStream(messages, signal, query),
     stream.controller,
     (chunk) => {
       if (chunk.kind === 'reasoning') {

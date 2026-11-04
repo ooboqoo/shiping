@@ -4,6 +4,10 @@ import type { ApiProfile, AppMode } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
 import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 import { DEFAULT_PROXY, normalizeProxySettings } from '../shared/proxy'
+import {
+  DEFAULT_EXTERNAL_KNOWLEDGE,
+  normalizeExternalKnowledge
+} from '../shared/external-knowledge'
 import { setStealthEnabled } from './window-privacy'
 
 ipcMain.handle('getAppVersion', () => {
@@ -25,6 +29,12 @@ export function onSettingsChanged(listener: SettingsListener): void {
 ipcMain.handle('updateAppSettings', (_event, _settings) => {
   if ('networkProxy' in _settings) {
     _settings = { ..._settings, networkProxy: normalizeProxySettings(_settings.networkProxy) }
+  }
+  if ('externalKnowledge' in _settings) {
+    _settings = {
+      ..._settings,
+      externalKnowledge: normalizeExternalKnowledge(_settings.externalKnowledge)
+    }
   }
   const previous = { ...settings }
   Object.assign(settings, _settings)
@@ -86,6 +96,8 @@ ipcMain.handle('selectConversationDir', () => pickDirectory('选择对话记录�
 
 export const settings = {
   networkProxy: { ...DEFAULT_PROXY },
+  /** 外部知识库, see external-knowledge.ts; read through normalizeExternalKnowledge() */
+  externalKnowledge: { ...DEFAULT_EXTERNAL_KNOWLEDGE, modes: [] as AppMode[] },
   /** Window colour scheme, kept in sync with the renderer; see renderer lib/theme.ts */
   theme: 'dark' as 'dark' | 'light',
   apiBaseURL: process.env.API_BASE_URL || '',

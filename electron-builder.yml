@@ -9,6 +9,7 @@ files:
   - '!**/.vscode/*'
   - '!src/*'
   - '!relay/**' # 手机同步的中转服务，单独部署；应用内的局域网页面已打进 main
+  - '!examples/**' # 接口示例，不随应用发布
   - '!tests/**'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'

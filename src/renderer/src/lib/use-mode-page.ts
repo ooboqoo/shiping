@@ -106,6 +106,16 @@ export function useModePage(mode: AppMode): void {
     }
   }, [])
 
+  // The answer goes on without the passages; this says why it may know less
+  useEffect(() => {
+    window.api.onExternalKnowledgeError((message) => {
+      toast(message, { description: '可在「设置 → 资料库 → 外部知识库」测试连接', duration: 4000 })
+    })
+    return () => {
+      window.api.removeExternalKnowledgeErrorListener()
+    }
+  }, [])
+
   useEffect(() => {
     window.api.onSwitchMode(() => navigate(MODE_PATHS[otherMode(mode)]))
     return () => {
