@@ -1,8 +1,7 @@
-import { app } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { settings } from './settings'
+import { conversationSaveDir } from './settings'
 import { NO_REPLY, type HintCard, type Utterance } from '../shared/conversation'
 
 /**
@@ -19,10 +18,6 @@ export interface ConversationRecord {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
-
-function getSaveDir(): string {
-  return settings.conversationSaveDir || join(app.getPath('documents'), 'Shiping')
-}
 
 function fileName(startedAt: number): string {
   const d = new Date(startedAt)
@@ -97,7 +92,7 @@ let queue: Promise<void> = Promise.resolve()
 export function saveConversation(record: ConversationRecord): Promise<void> {
   const content = formatConversation(record)
   if (!content) return Promise.resolve()
-  const dir = getSaveDir()
+  const dir = conversationSaveDir()
   const filePath = join(dir, fileName(record.startedAt))
   const write = queue.then(async () => {
     await mkdir(dir, { recursive: true })
@@ -111,7 +106,7 @@ export function saveConversation(record: ConversationRecord): Promise<void> {
 export function saveConversationSync(record: ConversationRecord): void {
   const content = formatConversation(record)
   if (!content) return
-  const dir = getSaveDir()
+  const dir = conversationSaveDir()
   try {
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, fileName(record.startedAt)), content, 'utf8')

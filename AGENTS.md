@@ -23,7 +23,7 @@ Key capabilities:
 
 | Layer     | Technology                                                                                                                         |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Framework | Electron 37 (electron-vite 6)                                                                                                      |
+| Framework | Electron 45 (electron-vite 6)                                                                                                      |
 | Frontend  | React 19, TypeScript 5.8                                                                                                           |
 | Styling   | Tailwind CSS v4, shadcn/ui (New York style), Radix primitives                                                                      |
 | State     | Zustand 5 (6 stores, 2 with localStorage persistence)                                                                              |
@@ -409,6 +409,7 @@ For material too large to send whole, the user runs a retrieval service of their
 - Uses DashScope (Alibaba Cloud) Fun-ASR real-time ASR via WebSocket (`src/main/transcription.ts`)
 - Requires a separate `dashscopeApiKey` configured in settings
 - Audio is captured in the renderer via `getDisplayMedia()` (system audio), downsampled to 16kHz PCM, and streamed to main process via IPC
+- `index.ts` answers that request: `setDisplayMediaRequestHandler` grants the first screen with `audio: 'loopback'` (`null` refuses it), and `setPermissionRequestHandler` must allow `display-capture`, which Electron 45 asks for instead of `media`; without it every capture fails with `NotAllowedError`. On macOS the loopback is a CoreAudio tap (since Electron 39), which needs `NSAudioCaptureUsageDescription` in Info.plist: Electron's own Info.plist carries it, and without it the track is created `ended` and stays silent, with no error
 - `TranscriptionBar` is absolute-positioned at the top of the coder page, shows up to 3 lines with auto-scroll
 - On screenshot (`takeScreenshot` / `appendScreenshot`), accumulated transcription text is automatically attached to the AI prompt, then cleared
 - `clearTranscription` shortcut clears text without submitting to AI
@@ -504,7 +505,7 @@ The app was renamed from 截屏解题助手 (`interview-coder-cn`) to 识屏 (`s
 ### Commands
 
 ```bash
-npm install          # Install dependencies
+npm install          # Install dependencies; postinstall also downloads the Electron binary (`install-electron`: the electron package stopped doing it itself in 42)
 npm run dev          # Start in dev mode (electron-vite dev)
 npm run build        # Typecheck + build (electron-vite build)
 npm test             # Unit tests (node:test, tests/*.test.cjs)

@@ -1,9 +1,10 @@
 import { app, dialog, ipcMain } from 'electron'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { rename, unlink, writeFile } from 'fs/promises'
-import { basename, extname, join } from 'path'
+import { basename, dirname, extname, join } from 'path'
 import { randomUUID } from 'crypto'
 import { extractFileText, normalizeText } from './knowledge-parse'
+import { dialogStartDir } from './settings'
 import type { AppMode } from '../shared/api-profile'
 import {
   estimateTokens,
@@ -205,9 +206,18 @@ ipcMain.handle('knowledge:get-text', (_event, id: string) => {
   return texts.get(id) ?? ''
 })
 
+/** Folder of the file-imported doc changed last, for the import dialog to open in */
+function lastImportDir(): string | undefined {
+  const [latest] = load()
+    .filter((doc) => doc.sourcePath)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  return dialogStartDir(latest?.sourcePath && dirname(latest.sourcePath))
+}
+
 ipcMain.handle('knowledge:pick-files', async () => {
   const result = await dialog.showOpenDialog({
     title: '导入资料',
+    defaultPath: lastImportDir(),
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'PDF、Word、Markdown、TXT', extensions: KNOWLEDGE_EXTENSIONS }]
   })

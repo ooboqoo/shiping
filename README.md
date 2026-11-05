@@ -49,7 +49,7 @@
 
 ## 快速开始
 
-1. **下载安装**：到 [Releases](https://github.com/ooboqoo/shiping/releases) 下载，Windows 用 `setup.exe`，macOS 用 `.dmg`（目前只有 Apple 芯片版本，Intel 芯片请[从源码运行](#从源码运行)）。首次打开的注意事项见 [Wiki 教程](https://github.com/ooboqoo/shiping/wiki/%E7%9B%B4%E6%8E%A5%E4%B8%8B%E8%BD%BD%E5%AE%89%E8%A3%85%E5%8C%85%E4%BD%BF%E7%94%A8)
+1. **下载安装**：到 [Releases](https://github.com/ooboqoo/shiping/releases) 下载，Windows 用 `setup.exe`，macOS 用 `.dmg`（需要 macOS 13 及以上；目前只有 Apple 芯片版本，Intel 芯片请[从源码运行](#从源码运行)）。首次打开的注意事项见 [Wiki 教程](https://github.com/ooboqoo/shiping/wiki/%E7%9B%B4%E6%8E%A5%E4%B8%8B%E8%BD%BD%E5%AE%89%E8%A3%85%E5%8C%85%E4%BD%BF%E7%94%A8)
 2. **配置 AI**：首次打开会提示填写 `API Base URL` 和 `API Key`。推荐 [DeepSeek](https://platform.deepseek.com/)，地址已经默认选好，填上 API Key 即可，两种模式都能用；其他兼容 OpenAI API 的平台也可以，如 [OpenRouter](https://openrouter.ai/)、OpenAI 官方（只填 `API Key`）、[硅基流动](https://cloud.siliconflow.cn/i/SG8C0772)。常用平台的填法见 Wiki 的[对照表](https://github.com/ooboqoo/shiping/wiki/AI%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE%E4%B8%8E%E8%B0%83%E7%94%A8%E5%A4%B1%E8%B4%A5#%E5%B8%B8%E7%94%A8%E5%B9%B3%E5%8F%B0%E7%9A%84%E5%A1%AB%E6%B3%95)
 3. **为两种模式选模型**：「设置 → AI 模型」可以保存多套配置，再到「截图模式」「对话模式」分别选用。截图模式需要**能识图的模型**，对话模式建议选打开「关闭思考」的**快模型**
 

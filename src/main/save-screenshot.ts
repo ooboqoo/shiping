@@ -1,11 +1,6 @@
-import { app } from 'electron'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { settings } from './settings'
-
-function getSaveDir(): string {
-  return settings.screenshotDir || join(app.getPath('pictures'), 'Shiping')
-}
+import { settings, screenshotSaveDir } from './settings'
 
 function generateFilename(): string {
   const now = new Date()
@@ -18,7 +13,7 @@ function generateFilename(): string {
 export async function saveScreenshotToDisk(base64Data: string): Promise<void> {
   if (!settings.screenshotAutoSave) return
 
-  const dir = getSaveDir()
+  const dir = screenshotSaveDir()
   try {
     await mkdir(dir, { recursive: true })
     const filePath = join(dir, generateFilename())

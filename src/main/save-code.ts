@@ -244,13 +244,18 @@ function pickCodeBlock(answer: string): CodeBlock | null {
  * it straight into an editor. Only the code is copied — the fence markers
  * would just be noise when pasted.
  */
-export function copyCodeToClipboard(answer: string): void {
+export async function copyCodeToClipboard(answer: string): Promise<void> {
   if (!settings.codeCopyToClipboard) return
 
   const block = pickCodeBlock(answer)
   if (!block) return
 
-  clipboard.writeText(block.code)
+  // Asynchronous since Electron 44, like navigator.clipboard
+  try {
+    await clipboard.writeText(block.code)
+  } catch (error) {
+    console.error('Failed to copy code to the clipboard:', error)
+  }
 }
 
 /**
@@ -287,6 +292,6 @@ export async function saveCodeToDisk(answer: string): Promise<void> {
  * best-effort and silent.
  */
 export function handleGeneratedCode(answer: string): void {
-  copyCodeToClipboard(answer)
+  void copyCodeToClipboard(answer)
   void saveCodeToDisk(answer)
 }

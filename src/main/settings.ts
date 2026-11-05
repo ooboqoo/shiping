@@ -1,4 +1,6 @@
 import { app, dialog, ipcMain } from 'electron'
+import { existsSync } from 'fs'
+import { dirname, isAbsolute, join } from 'path'
 import type { CaptureRegion } from '../shared/capture-region'
 import type { ApiProfile, AppMode } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
@@ -80,11 +82,35 @@ export function applyDockVisibility(hidden: boolean): void {
   }
 }
 
-/** Ask for a folder; null if the user cancels */
-async function pickDirectory(title: string): Promise<string | null> {
+/** Folder screenshots are saved to: the one chosen, else Pictures/Shiping */
+export function screenshotSaveDir(): string {
+  return settings.screenshotDir || join(app.getPath('pictures'), 'Shiping')
+}
+
+/** Folder 对话模式's records are saved to: the one chosen, else Documents/Shiping */
+export function conversationSaveDir(): string {
+  return settings.conversationSaveDir || join(app.getPath('documents'), 'Shiping')
+}
+
+/**
+ * Where a file dialog opens: `path`, else its nearest existing parent. Since
+ * Electron 43 the OS no longer remembers the last folder, so a dialog given
+ * none starts in Downloads every time
+ */
+export function dialogStartDir(path: string | undefined): string | undefined {
+  if (!path || !isAbsolute(path)) return undefined
+  for (let dir = path; ; dir = dirname(dir)) {
+    if (existsSync(dir)) return dir
+    if (dirname(dir) === dir) return undefined
+  }
+}
+
+/** Ask for a folder, opening at `current`; null if the user cancels */
+async function pickDirectory(title: string, current: string): Promise<string | null> {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory', 'createDirectory'],
-    title
+    title,
+    defaultPath: dialogStartDir(current)
   })
   if (result.canceled || result.filePaths.length === 0) {
     return null
@@ -92,9 +118,11 @@ async function pickDirectory(title: string): Promise<string | null> {
   return result.filePaths[0]
 }
 
-ipcMain.handle('selectScreenshotDir', () => pickDirectory('选择截图保存目录'))
-ipcMain.handle('selectCodeDir', () => pickDirectory('选择代码保存目录'))
-ipcMain.handle('selectConversationDir', () => pickDirectory('选择对话记录保存目录'))
+ipcMain.handle('selectScreenshotDir', () => pickDirectory('选择截图保存目录', screenshotSaveDir()))
+ipcMain.handle('selectCodeDir', () => pickDirectory('选择代码保存目录', settings.codeSaveDir))
+ipcMain.handle('selectConversationDir', () =>
+  pickDirectory('选择对话记录保存目录', conversationSaveDir())
+)
 
 export const settings = {
   networkProxy: { ...DEFAULT_PROXY },

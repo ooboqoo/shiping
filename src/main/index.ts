@@ -67,28 +67,24 @@ app.whenReady().then(() => {
         return []
       })
       .then((sources) => {
-        if (sources.length > 0) {
-          callback({ video: sources[0], audio: 'loopback' })
-          return
-        }
-        // No video refuses the request (getDisplayMedia rejects with an
-        // AbortError), and Electron throws for it as well
-        try {
-          callback({})
-        } catch {
-          // refused, as intended
-        }
+        // null refuses the request: getDisplayMedia rejects with an AbortError
+        callback(sources.length > 0 ? { video: sources[0], audio: 'loopback' } : null)
       })
   })
 
   // Auto-approve microphone access so users can enumerate and select audio input devices,
+  // the screen capture getDisplayMedia needs for system audio (`display-capture`: Electron 45
+  // stopped reporting it as `media`, and without it listening fails with NotAllowedError),
   // and clipboard writes for the copy buttons (navigator.clipboard.writeText)
+  const allowedPermissions = [
+    'media',
+    'display-capture',
+    'microphone',
+    'audio',
+    'clipboard-sanitized-write'
+  ]
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    if (['media', 'microphone', 'audio', 'clipboard-sanitized-write'].includes(permission)) {
-      callback(true)
-    } else {
-      callback(false)
-    }
+    callback(allowedPermissions.includes(permission))
   })
 
   // Default open or close DevTools by F12 in development
