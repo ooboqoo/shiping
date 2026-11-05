@@ -28,7 +28,7 @@ export function TranscriptPanel() {
   return (
     <section className="flex w-2/5 min-w-0 shrink-0 flex-col border-r border-app-border max-[560px]:h-32 max-[560px]:w-full max-[560px]:border-r-0 max-[560px]:border-b">
       <div className="flex h-8 shrink-0 items-center gap-2 px-3 text-xs text-app-muted-fg select-none">
-        <span className="font-medium">对方说的话</span>
+        <span className="font-medium">双方语音</span>
         {isTranscribing && (
           <span className="flex items-center gap-1 text-green-500">
             <Mic className="size-3.5 animate-pulse" />
@@ -53,7 +53,7 @@ export function TranscriptPanel() {
       >
         {utterances.length === 0 ? (
           <p className="pt-1 text-sm text-app-muted-fg">
-            {isTranscribing ? '正在听对方说话…' : '开始监听后，对方说的话会逐句显示在这里'}
+            {isTranscribing ? '正在听双方说话…' : '开始监听后，双方语音会逐句显示在这里'}
           </p>
         ) : (
           utterances.map((u) => (
@@ -68,6 +68,9 @@ export function TranscriptPanel() {
                   'ring-2 ring-sky-400/70'
               )}
             >
+              <span className="mr-1 text-[10px] font-medium text-app-muted-fg">
+                {u.source === 'microphone' ? '我 · 麦克风' : '面试官 · 电脑'}
+              </span>
               {u.text}
             </p>
           ))

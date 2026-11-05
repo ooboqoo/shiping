@@ -30,7 +30,16 @@ export default function App() {
     window.api.getAppSettings().then((settings) => {
       // Main starts with stealth on; a persisted "off" must win over that default.
       const blankFields = Object.keys(settings).filter(
-        (key) => key !== 'stealthEnabled' && settings[key] && !settingsStore[key]
+        (key) =>
+          ![
+            'stealthEnabled',
+            'conversationContextEnabled',
+            'conversationContextRounds',
+            'conversationContextTokenBudget',
+            'conversationAudioMode'
+          ].includes(key) &&
+          settings[key] &&
+          !settingsStore[key]
       )
       settingsStore.syncSettings(
         blankFields.reduce(

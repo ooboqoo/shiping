@@ -165,10 +165,21 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
   // What it answers, for when the transcript column is hidden or scrolled away
   const question = useConversationStore((state) =>
     state.utterances
-      .filter((u) => u.id >= card.fromId && u.id <= card.toId)
+      .filter((u) => u.source !== 'microphone' && u.id >= card.fromId && u.id <= card.toId)
       .map((u) => u.text)
       .join(' ')
   )
+  const hasText = /[\p{L}\p{N}\p{S}]/u.test(card.text)
+  const reported = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (!hasText || card.requestedAt === undefined || reported.current === card.requestedAt) return
+    reported.current = card.requestedAt
+    // The text has committed; the next frame is the first rendering opportunity.
+    const frame = requestAnimationFrame(
+      () => void window.api.reportFirstVisible(card.id, card.requestedAt!)
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [card.id, card.requestedAt, hasText])
   const noReply = card.status === 'done' && card.text.trim() === NO_REPLY
 
   return (
@@ -183,9 +194,21 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
     >
       <div className="mb-1 flex items-center gap-2 text-[11px] text-app-muted-fg select-none">
         {question && <span className="min-w-0 truncate">「{question}」</span>}
-        <span className="ml-auto shrink-0">
+        <span
+          className="ml-auto shrink-0"
+          title={
+            card.visibleSpeechLatencyMs !== undefined
+              ? `从转写定稿到可见首字 ${(card.visibleSpeechLatencyMs / 1000).toFixed(1)}s（不含静音断句等待）；历史约 ${card.historyTokens ?? 0} token`
+              : '首字计时不包含思考过程'
+          }
+        >
           {card.source === 'auto' ? '自动' : '手动'}
-          {card.latencyMs !== undefined && ` · ${(card.latencyMs / 1000).toFixed(1)}s`}
+          {card.visibleLatencyMs !== undefined
+            ? ` · 首字 ${(card.visibleLatencyMs / 1000).toFixed(1)}s`
+            : card.latencyMs !== undefined
+              ? ` · 接收首字 ${(card.latencyMs / 1000).toFixed(1)}s`
+              : ''}
+          {!!card.historyRounds && ` · ${card.historyRounds}轮摘要`}
           {card.status === 'stopped' && ' · 已停止'}
         </span>
       </div>

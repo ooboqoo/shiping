@@ -1,4 +1,5 @@
 import { Lightbulb, Mic, MicOff, OctagonX, PointerOff } from 'lucide-react'
+import { useNavigate } from 'react-router'
 import { cn } from '@/lib/utils'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { useAppStore } from '@/lib/store/app'
@@ -15,6 +16,11 @@ const HINT_MODES: { value: HintMode; label: string }[] = [
 
 /** Listening, automatic / manual hints and the hint button, each with its shortcut */
 export function ConversationStatusBar() {
+  const navigate = useNavigate()
+  const contextEnabled = useSettingsStore((state) => state.conversationContextEnabled)
+  const contextRounds = useSettingsStore((state) => state.conversationContextRounds)
+  const audioMode = useSettingsStore((state) => state.conversationAudioMode)
+  const updateSetting = useSettingsStore((state) => state.updateSetting)
   const { ignoreMouse } = useAppStore()
   const { shortcuts } = useShortcutsStore()
   const hintMode = useSettingsStore((state) => state.conversationHintMode)
@@ -33,7 +39,7 @@ export function ConversationStatusBar() {
     )
 
   return (
-    <div className="flex h-8 shrink-0 items-center gap-3 border-t border-app-border bg-app-status px-3 text-xs text-app-status-fg select-none">
+    <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 py-1 border-t border-app-border bg-app-status px-3 text-xs text-app-status-fg select-none">
       <button className="flex items-center gap-1 cursor-pointer" onClick={toggleListening}>
         {isTranscribing ? (
           <Mic className="size-3.5 animate-pulse text-green-500" />
@@ -84,6 +90,22 @@ export function ConversationStatusBar() {
         </button>
       )}
 
+      <button
+        aria-label="切换摘要上下文"
+        aria-pressed={contextEnabled}
+        title="点击开关历史摘要，不清空对话记录"
+        className="cursor-pointer"
+        onClick={() => updateSetting('conversationContextEnabled', !contextEnabled)}
+      >
+        上下文 {contextEnabled ? `${contextRounds}轮摘要` : '关'}
+      </button>
+      <button
+        title="设置轮数、预算与录音来源"
+        className="cursor-pointer text-app-muted-fg"
+        onClick={() => navigate('/settings?tab=conversation')}
+      >
+        {audioMode === 'dual' ? '电脑 + 麦克风' : audioMode === 'system' ? '仅电脑' : '仅麦克风'}
+      </button>
       {ignoreMouse && (
         <span className="ml-auto flex items-center gap-1">
           <PointerOff className="size-3.5" />

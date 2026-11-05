@@ -70,6 +70,14 @@ function useConversationEvents() {
       store.upsertHint(card)
     })
     window.api.onConversationHintChunk((id, chunk) => {
+      // Do not queue the first answer behind a throttled animation frame.
+      const card = useConversationStore.getState().hints.find((hint) => hint.id === id)
+      if (card && !card.text.trim()) {
+        const first = (pendingChunks.current.get(id) ?? '') + chunk
+        pendingChunks.current.delete(id)
+        useConversationStore.getState().appendHintText(new Map([[id, first]]))
+        return
+      }
       pendingChunks.current.set(id, (pendingChunks.current.get(id) ?? '') + chunk)
       if (frameHandle.current === null) {
         frameHandle.current = window.requestAnimationFrame(flush)

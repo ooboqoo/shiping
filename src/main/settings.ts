@@ -8,7 +8,7 @@ import {
   type AppMode,
   type ReasoningEffort
 } from '../shared/api-profile'
-import type { HintMode } from '../shared/conversation'
+import type { ConversationAudioMode, HintMode } from '../shared/conversation'
 import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 import { createToolbarButtons } from '../shared/toolbar'
 import { DEFAULT_PROXY, normalizeProxySettings } from '../shared/proxy'
@@ -158,6 +158,10 @@ export const settings = {
   conversationPrompt: '',
   /** 对话模式: hint on every finished sentence (`auto`) or only on the shortcut */
   conversationHintMode: 'auto' as HintMode,
+  conversationContextEnabled: true,
+  conversationContextRounds: 3,
+  conversationContextTokenBudget: 1000,
+  conversationAudioMode: 'dual' as ConversationAudioMode,
   /** 对话模式: silence (ms) that ends a sentence in the recogniser */
   conversationSilenceMs: 800,
   /** 对话模式: a finished sentence shorter than this triggers no automatic hint */

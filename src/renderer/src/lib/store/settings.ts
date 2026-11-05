@@ -1,3 +1,4 @@
+import { normalizeContextOptions } from '../../../../shared/conversation-context'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import codingPrompt from './prompts/coding.md?raw'
@@ -21,7 +22,7 @@ import {
   type AppMode,
   type ReasoningEffort
 } from '../../../../shared/api-profile'
-import type { HintMode } from '../../../../shared/conversation'
+import type { ConversationAudioMode, HintMode } from '../../../../shared/conversation'
 import { DEFAULT_PROXY, normalizeProxySettings, type ProxySettings } from '../../../../shared/proxy'
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE,
@@ -337,6 +338,10 @@ interface Settings {
   /** The mode shown last, restored on the next start */
   lastMode: AppMode
   /** 对话模式: hint as soon as the other side finishes a sentence, or only on the shortcut */
+  conversationContextEnabled: boolean
+  conversationContextRounds: number
+  conversationContextTokenBudget: number
+  conversationAudioMode: ConversationAudioMode
   conversationHintMode: HintMode
   /** 对话模式: silence (ms) after which the recogniser ends a sentence; shorter hints sooner */
   conversationSilenceMs: number
@@ -474,6 +479,10 @@ const defaultSettings: Settings = {
   audioOutputDeviceId: '',
 
   lastMode: 'screenshot',
+  conversationContextEnabled: true,
+  conversationContextRounds: 3,
+  conversationContextTokenBudget: 1000,
+  conversationAudioMode: 'dual',
   conversationHintMode: 'auto',
   conversationSilenceMs: 800,
   conversationMinChars: 4,
@@ -856,6 +865,16 @@ export const useSettingsStore = create<SettingsStore>()(
         }
         state.externalKnowledge = normalizeExternalKnowledge(state.externalKnowledge)
         state.toolbarButtons = normalizeToolbarButtons(state.toolbarButtons)
+        const context = normalizeContextOptions({
+          enabled: state.conversationContextEnabled,
+          rounds: state.conversationContextRounds,
+          tokenBudget: state.conversationContextTokenBudget
+        })
+        state.conversationContextEnabled = context.enabled
+        state.conversationContextRounds = context.rounds
+        state.conversationContextTokenBudget = context.tokenBudget
+        if (!['dual', 'system', 'microphone'].includes(state.conversationAudioMode))
+          state.conversationAudioMode = 'dual'
         // Rebuild the presets on every load, so ones added in a later version
         // show up for existing users; the ones the user deleted stay out
         const persistedScenes = Array.isArray(state.scenes) ? state.scenes : []

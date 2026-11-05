@@ -1,3 +1,4 @@
+import { stopListening } from '@/conversation/listening'
 import { useEffect } from 'react'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useTranscriptionStore } from '@/lib/store/transcription'
@@ -23,10 +24,7 @@ export default function CoderPage() {
   // instead ends that conversation's recognition, whose sentences would
   // otherwise never reach this page's transcript
   useEffect(() => {
-    if (!useTranscriptionStore.getState().isTranscribing) return
-    stopAudioCapture()
-    void window.api.stopTranscription()
-    useTranscriptionStore.getState().setIsTranscribing(false)
+    void stopListening()
   }, [])
 
   useEffect(() => {
@@ -41,6 +39,7 @@ export default function CoderPage() {
           return
         }
         try {
+          await window.api.stopTranscription()
           await startAudioCapture()
           await window.api.startTranscription(dashscopeApiKey)
           setIsTranscribing(true)
