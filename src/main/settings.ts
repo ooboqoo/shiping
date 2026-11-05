@@ -2,7 +2,12 @@ import { app, dialog, ipcMain } from 'electron'
 import { existsSync } from 'fs'
 import { dirname, isAbsolute, join } from 'path'
 import type { CaptureRegion } from '../shared/capture-region'
-import type { ApiProfile, AppMode } from '../shared/api-profile'
+import {
+  normalizeReasoningEffort,
+  type ApiProfile,
+  type AppMode,
+  type ReasoningEffort
+} from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
 import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 import { createToolbarButtons } from '../shared/toolbar'
@@ -141,6 +146,8 @@ export const settings = {
    * user's "off".
    */
   disableThinking: false,
+  /** The active profile's 「思考强度」; empty leaves it to the model */
+  reasoningEffort: '' as ReasoningEffort,
   /** Every saved AI profile, synced from the renderer; each mode picks one by id */
   apiProfiles: [] as ApiProfile[],
   screenshotProfileId: '',
@@ -226,6 +233,7 @@ export function getModeProfile(mode: AppMode): ApiProfile {
     apiKey: settings.apiKey,
     apiHeaders: settings.apiHeaders,
     model: settings.model,
-    disableThinking: settings.disableThinking
+    disableThinking: settings.disableThinking,
+    reasoningEffort: normalizeReasoningEffort(settings.reasoningEffort)
   }
 }

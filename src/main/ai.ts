@@ -3,7 +3,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { settings, getModeProfile } from './settings'
 import { DEFAULT_API_BASE_URL, type ApiProfile, type AppMode } from '../shared/api-profile'
 import { buildRequestHeaders } from '../shared/request-headers'
-import { createThinkingOffFetch } from './thinking'
+import { createReasoningEffortFetch, createThinkingOffFetch } from './thinking'
 import { apiFetch } from './api-fetch'
 import { getKnowledgePrompt } from './knowledge'
 import { getExternalReference, withReference } from './external-knowledge'
@@ -24,6 +24,29 @@ function reportThinkingRefused(model: string) {
   mainWindow.webContents.send('thinking-unsupported', model)
 }
 
+/** Tell the user once that the active model refused the profile's 「思考强度」 */
+function reportEffortRefused(model: string) {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('reasoning-effort-unsupported', model)
+}
+
+/** 「关闭思考」 wins over 「思考强度」: thinking that is off has no strength */
+function createFetch(profile: ApiProfile): typeof fetch {
+  if (profile.disableThinking) {
+    return createThinkingOffFetch(profile.apiBaseURL, reportThinkingRefused, apiFetch)
+  }
+  if (profile.reasoningEffort) {
+    return createReasoningEffortFetch(
+      profile.apiBaseURL,
+      profile.reasoningEffort,
+      reportEffortRefused,
+      apiFetch
+    )
+  }
+  return apiFetch
+}
+
 function createProvider(profile: ApiProfile) {
   // The app only ever talks OpenAI-compatible chat-completions; this provider
   // also surfaces thinking models' reasoning (`reasoning_content` / `reasoning`
@@ -34,9 +57,7 @@ function createProvider(profile: ApiProfile) {
     baseURL: profile.apiBaseURL.trim() || DEFAULT_API_BASE_URL,
     apiKey: profile.apiKey,
     headers: buildRequestHeaders(profile.apiKey, profile.apiHeaders),
-    fetch: profile.disableThinking
-      ? createThinkingOffFetch(profile.apiBaseURL, reportThinkingRefused, apiFetch)
-      : apiFetch
+    fetch: createFetch(profile)
   })
 }
 

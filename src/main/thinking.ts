@@ -9,8 +9,11 @@
  *
  * The OpenAI chat body has no standard field for this and every platform
  * spells it differently, so the fields are merged into the outgoing request
- * body by a fetch wrapper.
+ * body by a fetch wrapper. The same goes for 「思考强度」 (reasoning effort),
+ * which only some platforms read, each in its own spelling.
  */
+
+import type { ReasoningEffort } from '../shared/api-profile'
 
 /** Hosts whose own spelling applies to every model; mirrors renderer lib/providers.ts */
 const OPENROUTER_HOSTS = ['openrouter.ai']
@@ -24,7 +27,7 @@ const OPENAI_HOSTS = ['api.openai.com']
  * only `thinking` was sent, so the match covers every spelling rather than just
  * the ones sent.
  */
-const THINKING_FIELD_ERROR = /thinking|reasoning/i
+const THINKING_FIELD_ERROR = /thinking|reasoning|effort/i
 
 /** The API Base URL's host; an empty URL means OpenAI itself (DEFAULT_API_BASE_URL) */
 function hostOf(baseURL: string): string {
@@ -56,20 +59,38 @@ export function thinkingOffFields(baseURL: string, model: string): Record<string
   return { thinking: { type: 'disabled' }, enable_thinking: false }
 }
 
-/** Platform + model pairs that refused the fields; sent without them for the rest of the session */
+/**
+ * The request-body fields that ask for this reasoning effort. OpenRouter
+ * translates its own `reasoning.effort` for whichever model it routes to;
+ * everyone else gets the OpenAI spelling `reasoning_effort`, which OpenAI's
+ * o-series / GPT-5, Gemini's and xAI's OpenAI-compatible endpoints, Doubao,
+ * Groq, vLLM and Ollama read. A platform that does not know it mostly ignores
+ * it; one that rejects it gets the request again without it (see below)
+ */
+export function reasoningEffortFields(
+  baseURL: string,
+  effort: Exclude<ReasoningEffort, ''>
+): Record<string, unknown> {
+  if (onHosts(hostOf(baseURL), OPENROUTER_HOSTS)) return { reasoning: { effort } }
+  return { reasoning_effort: effort }
+}
+
+/** Fields + platform + model combinations that were refused; sent without them for the rest of the session */
 const refused = new Set<string>()
 
 /**
- * A fetch that adds the thinking-off fields to each chat request. A model that
- * refuses them — a thinking-only model, or a platform that rejects unknown
- * fields — gets the request again without them, so the setting can slow a
- * request down once but never make it fail. `onRefused` fires on that first
- * refusal only.
+ * A fetch that merges `fieldsFor(model)` into each chat request body. A model
+ * that refuses them — a thinking-only model, or a platform that rejects
+ * unknown fields — gets the request again without them, so the setting can
+ * slow a request down once but never make it fail. `onRefused` fires on that
+ * first refusal only. `kind` keeps one setting's refusals apart from another's
  */
-export function createThinkingOffFetch(
+function createExtraFieldsFetch(
+  kind: string,
   baseURL: string,
+  fieldsFor: (model: string) => Record<string, unknown>,
   onRefused: (model: string) => void,
-  transport: typeof fetch = fetch
+  transport: typeof fetch
 ): typeof fetch {
   return async (input, init) => {
     let body: unknown
@@ -81,12 +102,14 @@ export function createThinkingOffFetch(
     if (!body || typeof body !== 'object' || Array.isArray(body)) return transport(input, init)
 
     const model = String((body as { model?: unknown }).model ?? '')
-    const key = `${baseURL.trim()}\n${model}`
+    const key = `${kind}
+${baseURL.trim()}
+${model}`
     if (refused.has(key)) return transport(input, init)
 
     const response = await transport(input, {
       ...init,
-      body: JSON.stringify({ ...body, ...thinkingOffFields(baseURL, model) })
+      body: JSON.stringify({ ...body, ...fieldsFor(model) })
     })
     if (response.status !== 400 && response.status !== 422) return response
     const detail = await response
@@ -99,4 +122,35 @@ export function createThinkingOffFetch(
     onRefused(model)
     return transport(input, init)
   }
+}
+
+/** 「关闭思考」: adds the thinking-off fields, see createExtraFieldsFetch() */
+export function createThinkingOffFetch(
+  baseURL: string,
+  onRefused: (model: string) => void,
+  transport: typeof fetch = fetch
+): typeof fetch {
+  return createExtraFieldsFetch(
+    'thinking-off',
+    baseURL,
+    (model) => thinkingOffFields(baseURL, model),
+    onRefused,
+    transport
+  )
+}
+
+/** 「思考强度」: adds the reasoning-effort fields, see createExtraFieldsFetch() */
+export function createReasoningEffortFetch(
+  baseURL: string,
+  effort: Exclude<ReasoningEffort, ''>,
+  onRefused: (model: string) => void,
+  transport: typeof fetch = fetch
+): typeof fetch {
+  return createExtraFieldsFetch(
+    `effort-${effort}`,
+    baseURL,
+    () => reasoningEffortFields(baseURL, effort),
+    onRefused,
+    transport
+  )
 }
