@@ -102,9 +102,7 @@ function createExtraFieldsFetch(
     if (!body || typeof body !== 'object' || Array.isArray(body)) return transport(input, init)
 
     const model = String((body as { model?: unknown }).model ?? '')
-    const key = `${kind}
-${baseURL.trim()}
-${model}`
+    const key = `${kind}\n${baseURL.trim()}\n${model}`
     if (refused.has(key)) return transport(input, init)
 
     const response = await transport(input, {
