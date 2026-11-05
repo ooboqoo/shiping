@@ -92,20 +92,40 @@ const faqs = [
     )
   },
   {
-    question: '分享屏幕时，对方能看到应用吗？',
+    question: '分享屏幕时，对方能看到应用吗？怎么确认隐身有效？',
     answer: (
-      <span>
-        默认开启「隐身模式」，工具窗口在截图和共享屏幕时隐藏，可在「设置 → 界面与隐私 →
-        隐身模式」中关闭，关闭后窗口可被截图和共享。部分会议软件可能需要额外配置，正式使用前请用「当前电脑」+「当前会议软件」测试。相关讨论见{' '}
-        <a
-          href="https://github.com/ooboqoo/shiping/issues/21"
-          target="_blank"
-          rel="noreferrer"
-          className="text-blue-600 hover:underline"
-        >
-          GitHub Issue #21
-        </a>
-        。
+      <span className="block space-y-2">
+        <span className="block">
+          默认开启「隐身模式」，尽量让工具窗口不出现在截图、录屏和共享屏幕里，可在「设置 →
+          界面与隐私 → 隐身模式」中关闭。菜单栏 / 托盘图标不在隐身范围内。
+        </span>
+        <span className="block font-semibold text-amber-900">
+          识屏只提供隐身的能力，不保证它在你的环境里一定有效，需要依赖它时请务必每次都自己实际测试。
+        </span>
+        <span className="block">
+          隐身靠的是操作系统和会议软件的配合：换一台电脑、升级识屏或操作系统、换会议软件（或者它升级了、换了共享方式），都可能让隐身失效，对方看到窗口、黑框或窗口边缘。少数会议软件、浏览器和录屏方式本来就能拍到窗口。别人测过能用，不代表在你的电脑上也能用。
+        </span>
+        <span className="block">
+          测试方法：用手机或另一台电脑加入同一个会议，按正式使用时的方式共享屏幕（共享整个屏幕还是某个窗口要一致），打开平时要用的设置（鼠标穿透、悬浮工具条等），把截图、追问、切换模式、隐藏再显示窗口、拖动窗口边缘都做一遍，看对方画面里有没有识屏。只是在浏览器里共享屏幕的，也可以打开{' '}
+          <a
+            href="https://mozilla.github.io/webrtc-landing/gum_test.html"
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-600 hover:underline"
+          >
+            WebRTC 测试页
+          </a>{' '}
+          点「Screen capture」自己看。大家的测试经验见{' '}
+          <a
+            href="https://github.com/ooboqoo/shiping/issues/21"
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-600 hover:underline"
+          >
+            GitHub Issue #21
+          </a>
+          。
+        </span>
       </span>
     )
   },

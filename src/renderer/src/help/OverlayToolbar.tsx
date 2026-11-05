@@ -11,7 +11,7 @@ export function OverlayToolbarHelp() {
     <HelpSection Icon={PanelTop} title="悬浮工具条" description="用鼠标点击替代快捷键操作">
       <p className="text-gray-700">
         工具条悬浮在主窗口正上方，跟随主窗口移动、随主窗口一起隐藏，透明度也与主窗口保持一致，
-        并且和主窗口一样在共享屏幕时对方不可见。它主要用于两种场景：一是快捷键与考试/面试软件冲突或注册失败时，
+        并且和主窗口一样受隐身模式保护（是否生效同样要自己测试）。它主要用于两种场景：一是快捷键与考试/面试软件冲突或注册失败时，
         二是不希望通过键盘触发操作时。
       </p>
       {(['screenshot', 'conversation'] as const).map((mode) => (

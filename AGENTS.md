@@ -297,6 +297,8 @@ When enabled, the app is designed to be invisible to screen-sharing software:
 - `keepWindowInFront()` repeatedly reasserts always-on-top for 5 seconds after show
 - `showInactive()` on macOS/Windows to avoid stealing focus
 
+User-facing text never promises that stealth works. It rests on the OS and the capturing app (macOS's ScreenCaptureKit ignores it by design, some Windows builds lose it with click-through on, Electron itself has regressed it), so another machine, an app, OS or Electron upgrade, or another meeting app can break it. Shiping offers the capability; the user tests it, every time they rely on it. Each place that describes stealth says so: README (tagline and the 隐身模式 section's warning), 帮助 → 简介 and the FAQ entry (with the test method), the warning under the 「界面与隐私 → 隐身模式」 switch, the update notice, the toolbar help and 手机同步's QR code note. New text about it keeps that line, and words like 不可见 / 看不到 stay qualified.
+
 ### Overlay Toolbar
 
 A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolbar` route, so the shortcut actions can be driven with the mouse instead of the keyboard:

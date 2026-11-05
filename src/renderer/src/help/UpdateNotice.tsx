@@ -23,6 +23,9 @@ export function UpdateNotice() {
           </a>
         </h3>
         <p className="text-sm break-words text-gray-700">{describe(update)}</p>
+        <p className="text-sm break-words text-amber-900">
+          新版本可能改变隐身效果，升级后需要依赖隐身模式时，请先重新实际测试一遍。
+        </p>
       </div>
       <UpdateAction update={update} />
     </div>

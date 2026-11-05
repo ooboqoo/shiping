@@ -1,4 +1,4 @@
-import { Palette, Shield } from 'lucide-react'
+import { Palette, Shield, TriangleAlert } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -144,7 +144,7 @@ export function AppearanceSection() {
         <div className="flex flex-col gap-5">
           <Field
             label="隐身模式"
-            note="默认开启，在截图和屏幕共享中隐藏窗口；关闭后可正常截图和共享，立即生效"
+            note="默认开启，尽量让窗口不出现在截图、录屏和屏幕共享里；关闭后可正常截图和共享，立即生效"
             noteLayout="stacked"
           >
             <Switch
@@ -153,6 +153,16 @@ export function AppearanceSection() {
               onCheckedChange={(checked) => updateSetting('stealthEnabled', checked)}
             />
           </Field>
+          {stealthEnabled && (
+            <p className="-mt-2 flex items-start gap-2 rounded-lg border border-amber-600/40 bg-amber-100/80 px-3 py-2 text-xs leading-relaxed text-amber-900">
+              <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+              <span>
+                识屏只提供隐身的能力，不保证在你的环境里一定有效。换电脑、升级识屏或系统、换会议软件都可能让它失效，
+                <strong className="font-semibold">需要依赖它时，请每次都先实际测试一遍</strong>
+                ，方法见「帮助 → 常见问题」
+              </span>
+            </p>
+          )}
           {isMac && (
             <Field
               label="隐藏 Dock 图标"

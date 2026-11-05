@@ -70,7 +70,9 @@ export default function HelpPage() {
               <li className="flex gap-2">
                 <EyeOff className="h-6 w-4" />
                 <span>
-                  工具窗口在共享屏幕时自动隐藏(对方不可见)(小部分会议软件可能需要配置才能隐藏)。
+                  隐身模式尽量让工具窗口不出现在共享屏幕和录屏里。效果因电脑、系统和会议软件而异，换电脑、升级、换会议软件都可能失效，
+                  <strong className="font-semibold">需要依赖它时请每次都自己实际测试</strong>
+                  （方法见下方常见问题）。
                 </span>
               </li>
               <li className="flex items-start gap-2">

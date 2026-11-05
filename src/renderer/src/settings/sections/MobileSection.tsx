@@ -161,7 +161,7 @@ export function MobileSection() {
     <SettingsCard Icon={Smartphone} title="手机同步">
       <div className="space-y-4">
         <p className="text-xs text-gray-700">
-          把截图模式的解答和对话模式的提示实时同步到手机浏览器上，手机只看不操作。二维码只显示在本窗口里，共享屏幕时对方看不到。
+          把截图模式的解答和对话模式的提示实时同步到手机浏览器上，手机只看不操作。二维码扫了就能看，它只显示在本窗口里，靠隐身模式挡在屏幕共享之外；隐身关闭或失效时对方也能扫到，共享屏幕时最好不要打开这一页。
         </p>
 
         <Field
