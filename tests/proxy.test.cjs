@@ -159,6 +159,90 @@ test('thinking-off fallback uses the supplied transport and preserves cancellati
   assert.deepEqual(refused, ['gpt-proxy-test'])
 })
 
+test('reasoning effort is spelled per platform and dropped when refused', async () => {
+  const { createReasoningEffortFetch, reasoningEffortFields } = load('src/main/thinking.ts')
+  assert.deepEqual(reasoningEffortFields('https://openrouter.ai/api/v1', 'high'), {
+    reasoning: { effort: 'high' }
+  })
+  assert.deepEqual(reasoningEffortFields('', 'low'), { reasoning_effort: 'low' })
+  assert.deepEqual(reasoningEffortFields('https://ark.cn-beijing.volces.com/api/v3', 'medium'), {
+    reasoning_effort: 'medium'
+  })
+
+  const calls = [],
+    refused = []
+  const transport = async (input, init) => {
+    calls.push({ input, init })
+    return calls.length === 1
+      ? new Response('Unknown parameter: reasoning_effort', { status: 400 })
+      : new Response('{}')
+  }
+  const fetch = createReasoningEffortFetch(
+    'https://effort.example.com',
+    'high',
+    (model) => refused.push(model),
+    transport
+  )
+  const body = JSON.stringify({ model: 'effort-test', messages: [] })
+  await fetch('https://effort.example.com', { method: 'POST', body })
+  assert.equal(calls.length, 2)
+  assert.equal(JSON.parse(calls[0].init.body).reasoning_effort, 'high')
+  assert.equal(calls[1].init.body, body)
+  // Remembered for the session: the next request goes without it at once
+  await fetch('https://effort.example.com', { method: 'POST', body })
+  assert.equal(calls.length, 3)
+  assert.equal(calls[2].init.body, body)
+  assert.deepEqual(refused, ['effort-test'])
+})
+
+test('a profile with a reasoning effort sends it, unless thinking is off', async () => {
+  const sent = []
+  const transport = async (input, init) => {
+    sent.push(JSON.parse(init.body))
+    return new Response('{}')
+  }
+  const profile = {
+    id: 'fixture',
+    apiBaseURL: 'https://example.com/v1',
+    apiKey: '',
+    model: 'effort-fixture',
+    disableThinking: false,
+    reasoningEffort: 'low'
+  }
+  const ai = load('src/main/ai.ts', {
+    './settings': {
+      settings: {},
+      getModeProfile: (mode) => ({ ...profile, disableThinking: mode === 'conversation' })
+    },
+    './knowledge': { getKnowledgePrompt: () => '' },
+    './external-knowledge': {
+      getExternalReference: async () => '',
+      withReference: (messages) => messages
+    },
+    './api-fetch': { apiFetch: transport },
+    ai: {
+      streamText: (options) => ({
+        fullStream: (async function* () {
+          await options.model.fetch('https://example.com/v1/chat/completions', {
+            method: 'POST',
+            body: JSON.stringify({ model: profile.model })
+          })
+          yield* []
+        })()
+      })
+    },
+    '@ai-sdk/openai-compatible': {
+      createOpenAICompatible: (options) => ({ chatModel: () => options })
+    }
+  })
+  for await (const chunk of ai.getSolutionStream([])) void chunk
+  for await (const chunk of ai.getHintStream([])) void chunk
+  assert.equal(sent[0].reasoning_effort, 'low')
+  // 对话模式's profile has thinking off here, which wins
+  assert.equal(sent[1].reasoning_effort, undefined)
+  assert.deepEqual(sent[1].thinking, { type: 'disabled' })
+})
+
 test('both chat modes and thinking-off requests use the same API transport', async () => {
   const sent = [],
     streams = []

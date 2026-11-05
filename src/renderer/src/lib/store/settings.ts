@@ -16,7 +16,11 @@ import {
 } from '../providers'
 import { createProfile, type ApiProfile } from '../api-profiles'
 import type { CaptureRegion } from '../../../../shared/capture-region'
-import type { AppMode } from '../../../../shared/api-profile'
+import {
+  normalizeReasoningEffort,
+  type AppMode,
+  type ReasoningEffort
+} from '../../../../shared/api-profile'
 import type { HintMode } from '../../../../shared/conversation'
 import { DEFAULT_PROXY, normalizeProxySettings, type ProxySettings } from '../../../../shared/proxy'
 import {
@@ -203,7 +207,14 @@ function withVision(
 }
 
 /** The live fields that are a mirror of the active profile */
-const CREDENTIAL_KEYS = ['apiBaseURL', 'apiKey', 'apiHeaders', 'model', 'disableThinking'] as const
+const CREDENTIAL_KEYS = [
+  'apiBaseURL',
+  'apiKey',
+  'apiHeaders',
+  'model',
+  'disableThinking',
+  'reasoningEffort'
+] as const
 
 /** Same as `patchProfile`, but a no-op when `id` matches nothing */
 function patchActiveProfile(
@@ -250,6 +261,8 @@ interface Settings {
   model: string
   /** The active profile's 「关闭思考」 */
   disableThinking: boolean
+  /** The active profile's 「思考强度」 */
+  reasoningEffort: ReasoningEffort
   /** Custom models created before they were kept per API Base URL; offered for every URL */
   customModels: string[]
   /** Custom models the user created, keyed by normalized API Base URL */
@@ -414,6 +427,7 @@ const defaultSettings: Settings = {
   apiHeaders: '',
   model: '',
   disableThinking: false,
+  reasoningEffort: '',
   customModels: [],
   customModelsByBaseURL: {},
   modelByBaseURL: {},
@@ -536,7 +550,8 @@ export const useSettingsStore = create<SettingsStore>()(
             apiKey: profile.apiKey,
             apiHeaders: profile.apiHeaders,
             model: profile.model,
-            disableThinking: profile.disableThinking
+            disableThinking: profile.disableThinking,
+            reasoningEffort: profile.reasoningEffort
           }
         })
       },
@@ -552,6 +567,7 @@ export const useSettingsStore = create<SettingsStore>()(
           apiHeaders: source?.apiHeaders ?? '',
           model: source?.model ?? '',
           disableThinking: source?.disableThinking ?? false,
+          reasoningEffort: source?.reasoningEffort ?? '',
           vision: source?.vision
         })
         // Only opened for editing: which profile each mode uses is left alone
@@ -562,7 +578,8 @@ export const useSettingsStore = create<SettingsStore>()(
           apiKey: profile.apiKey,
           apiHeaders: profile.apiHeaders,
           model: profile.model,
-          disableThinking: profile.disableThinking
+          disableThinking: profile.disableThinking,
+          reasoningEffort: profile.reasoningEffort
         })
         return profile.id
       },
@@ -590,6 +607,9 @@ export const useSettingsStore = create<SettingsStore>()(
             ...(patch.model !== undefined ? { model: patch.model } : {}),
             ...(patch.disableThinking !== undefined
               ? { disableThinking: patch.disableThinking }
+              : {}),
+            ...(patch.reasoningEffort !== undefined
+              ? { reasoningEffort: patch.reasoningEffort }
               : {})
           }
         })
@@ -622,7 +642,8 @@ export const useSettingsStore = create<SettingsStore>()(
           apiKey: next.apiKey,
           apiHeaders: next.apiHeaders,
           model: next.model,
-          disableThinking: next.disableThinking
+          disableThinking: next.disableThinking,
+          reasoningEffort: next.reasoningEffort
         })
         return true
       },
@@ -885,12 +906,13 @@ export const useSettingsStore = create<SettingsStore>()(
  * an ordinary load (trust the stored list).
  */
 function reconcileApiProfiles(state: Settings): ApiProfile[] {
-  // Profiles saved before custom headers, the thinking switch or the image
-  // flag existed carry none of them
+  // Profiles saved before custom headers, the thinking switch, the reasoning
+  // effort or the image flag existed carry none of them
   const profiles = (Array.isArray(state.apiProfiles) ? state.apiProfiles : []).map((p) => ({
     ...p,
     apiHeaders: p.apiHeaders ?? '',
     disableThinking: p.disableThinking ?? false,
+    reasoningEffort: normalizeReasoningEffort(p.reasoningEffort),
     vision: p.vision ?? knownVision(p.model ?? '')
   }))
   const active = profiles.find((p) => p.id === state.activeProfileId)
@@ -904,6 +926,7 @@ function reconcileApiProfiles(state: Settings): ApiProfile[] {
       apiHeaders: state.apiHeaders ?? '',
       model: state.model ?? '',
       disableThinking: false,
+      reasoningEffort: '',
       vision: knownVision(state.model ?? '')
     }
     state.activeProfileId = seeded.id
@@ -921,6 +944,7 @@ function reconcileApiProfiles(state: Settings): ApiProfile[] {
     state.apiHeaders = first.apiHeaders
     state.model = first.model
     state.disableThinking = first.disableThinking
+    state.reasoningEffort = first.reasoningEffort
     state.hasConfiguredApi = hasAnyApiKey(profiles)
     return profiles
   }
@@ -940,10 +964,11 @@ function reconcileApiProfiles(state: Settings): ApiProfile[] {
   state.apiBaseURL = resolved.apiBaseURL
   state.apiKey = resolved.apiKey
   state.model = resolved.model
-  // Headers and the thinking switch came in with profiles, so no flat value
-  // predates them to adopt
+  // Headers, the thinking switch and the reasoning effort came in with
+  // profiles, so no flat value predates them to adopt
   state.apiHeaders = active.apiHeaders
   state.disableThinking = active.disableThinking
+  state.reasoningEffort = active.reasoningEffort
 
   // A profile saved before these fields existed adopts whatever the flat
   // fields held, so an upgrade never silently blanks the user's credentials

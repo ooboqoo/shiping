@@ -7,6 +7,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { useSettingsStore, type AppMode, type ApiProfile } from '@/lib/store/settings'
+import { thinkingTag } from '@/lib/api-profiles'
 import { Field } from './components'
 
 const NOTES: Record<AppMode, string> = {
@@ -17,7 +18,7 @@ const NOTES: Record<AppMode, string> = {
 function describe(profile: ApiProfile, mode: AppMode): string {
   const tags = [
     profile.model || '未设置模型',
-    profile.disableThinking && '关闭思考',
+    thinkingTag(profile),
     profile.vision === true && mode === 'screenshot' && '识图',
     profile.vision === false && '仅文本'
   ].filter(Boolean)

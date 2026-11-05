@@ -283,7 +283,8 @@ function SaveStatus() {
     profile?.apiKey,
     profile?.apiHeaders,
     profile?.model,
-    profile?.disableThinking
+    profile?.disableThinking,
+    profile?.reasoningEffort
   ])
   const lastSnapshot = useRef(snapshot)
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')

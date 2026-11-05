@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { useSettingsStore, type AppMode } from './store/settings'
 import { useAppStore } from './store/app'
+import { thinkingTag } from './api-profiles'
 
 export const MODE_PATHS: Record<AppMode, string> = {
   screenshot: '/',
@@ -71,7 +72,9 @@ export function useModePage(mode: AppMode): void {
         return
       }
       toast(`${MODE_NAMES[mode]}已切换到「${profile.name}」`, {
-        description: `${profile.model || '未设置模型'}${profile.disableThinking ? ' · 关闭思考' : ''}`,
+        description: [profile.model || '未设置模型', thinkingTag(profile)]
+          .filter(Boolean)
+          .join(' · '),
         duration: 3000
       })
     })
@@ -103,6 +106,19 @@ export function useModePage(mode: AppMode): void {
     })
     return () => {
       window.api.removeThinkingUnsupportedListener()
+    }
+  }, [])
+
+  // Same for 「思考强度」: the request already went again without it
+  useEffect(() => {
+    window.api.onReasoningEffortUnsupported((model) => {
+      toast('当前模型不支持调节思考强度，已按默认方式请求', {
+        description: `${model}：可在设置里把这个配置的「思考强度」改回默认`,
+        duration: 5000
+      })
+    })
+    return () => {
+      window.api.removeReasoningEffortUnsupportedListener()
     }
   }, [])
 

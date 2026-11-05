@@ -186,6 +186,14 @@ const api = {
     ipcRenderer.removeAllListeners('thinking-unsupported')
   },
 
+  // The active model refused 「思考强度」, so its requests now go without it
+  onReasoningEffortUnsupported: (callback: (model: string) => void) => {
+    ipcRenderer.on('reasoning-effort-unsupported', (_event, model: string) => callback(model))
+  },
+  removeReasoningEffortUnsupportedListener: () => {
+    ipcRenderer.removeAllListeners('reasoning-effort-unsupported')
+  },
+
   // How long the finished request took, in milliseconds (measured in main)
   onSolutionDuration: (callback: (ms: number) => void) => {
     ipcRenderer.on('solution-duration', (_event, ms: number) => callback(ms))
