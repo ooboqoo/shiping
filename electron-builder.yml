@@ -5,15 +5,12 @@ extraMetadata:
   description: Shiping
 directories:
   buildResources: build
+# 只列运行要用的，仓库里新加的文件（文档、演示动图、工具配置、relay/ 等）就不会悄悄打进安装包。
+# package.json 和生产依赖由 electron-builder 自己带上；手机同步的局域网页面在构建时已打进 out/main
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!relay/**' # 手机同步的中转服务，单独部署；应用内的局域网页面已打进 main
-  - '!tests/**'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - out/**
+  - resources/** # 托盘图标等，见下面的 asarUnpack
+  - LICENSE
 asarUnpack:
   - resources/**
 afterPack: build/after-pack.mjs # macOS 由它用自签名证书签名，原因见文件开头
@@ -28,11 +25,13 @@ mac:
   artifactName: ${name}-${version}-${arch}-mac.${ext}
   identity: null # 关掉 electron-builder 自带的签名，改由 afterPack 签
   publish: null # macOS 版没有 Apple 签名，不做自动更新；应用内只提示新版本并链接到发布页
+  # 系统弹权限框时显示的用途说明。要写成映射：写成列表会原样进 Info.plist，成了系统读不到的 "0"…"3" 键。
+  # 没写的沿用 Electron 自带的英文说明（摄像头等，用不到，不会弹框）
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSMicrophoneUsageDescription: 识屏需要使用麦克风，把你在「设置 → 语音」选择的麦克风里的声音转成文字。
+    NSAudioCaptureUsageDescription: 识屏需要录制系统音频，把电脑里播放的声音（如线上会议里对方的发言）转成文字。
+    NSDocumentsFolderUsageDescription: 识屏需要访问「文稿」文件夹，用来保存对话记录，或重新导入从这里导入的资料。
+    NSDownloadsFolderUsageDescription: 识屏需要访问「下载」文件夹，用来重新导入从这里导入的资料。
   notarize: false
 dmg:
   # macOS 只构建 CI runner 所在架构（arm64），文件名带上架构避免误下载
