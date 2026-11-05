@@ -38,6 +38,14 @@ interface SolutionState {
   /** Collapse state the user chose per round; rounds not here follow the stream */
   roundUi: Record<number, RoundUi>
   screenshotData: string | null
+  /**
+   * The conversation's thumbnails, as main last sent them (it keeps the last 5).
+   * In the store for the same reason as the rounds: the page remounts after a
+   * visit to the settings, and main only resends them with the next screenshot
+   */
+  recentScreenshots: string[]
+  /** Every screenshot sent to the AI, which can exceed the thumbnails kept around */
+  screenshotTotal: number
   errorMessage: string | null
   /** How long the last request took, in ms; null until one has finished */
   durationMs: number | null
@@ -55,6 +63,7 @@ interface SolutionStore extends SolutionState {
   setRoundOpen: (index: number, open: boolean) => void
   setSolutionChunks: (chunks: string[]) => void
   setScreenshotData: (data: string | null) => void
+  setRecentScreenshots: (screenshots: string[], total: number) => void
   setErrorMessage: (message: string | null) => void
   setDurationMs: (ms: number | null) => void
   clearSolution: () => void
@@ -68,6 +77,8 @@ const defaultState: SolutionState = {
   liveRound: null,
   roundUi: {},
   screenshotData: null,
+  recentScreenshots: [],
+  screenshotTotal: 0,
   errorMessage: null,
   durationMs: null
 }
@@ -115,6 +126,9 @@ export const useSolutionStore = create<SolutionStore>()((set) => ({
   setScreenshotData: (data) => {
     set({ screenshotData: data })
   },
+  setRecentScreenshots: (screenshots, total) => {
+    set({ recentScreenshots: screenshots, screenshotTotal: total })
+  },
   setErrorMessage: (message) => {
     set({ errorMessage: message })
   },
@@ -122,9 +136,13 @@ export const useSolutionStore = create<SolutionStore>()((set) => ({
     set({ durationMs: ms })
   },
   clearSolution: () => {
-    // A new conversation: the previous chunks and timing no longer apply, and
-    // round 0 opens so the text to come is paired with the reasoning to come
+    // A new conversation: the previous screenshots, chunks and timing no longer
+    // apply, and round 0 opens so the text to come is paired with the reasoning
+    // to come
     set({
+      screenshotData: null,
+      recentScreenshots: [],
+      screenshotTotal: 0,
       solutionChunks: [],
       reasoningRounds: [{ chunks: [], textStart: 0 }],
       liveRound: null,

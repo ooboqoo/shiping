@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Brain, ChevronDown, Images } from 'lucide-react'
 import { useSettingsStore, type ScreenshotDisplay } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
@@ -12,12 +12,15 @@ const SCROLL_OFFSET = 120
 export function AppContent() {
   const {
     screenshotData,
+    recentScreenshots,
+    screenshotTotal,
     solutionChunks,
     reasoningRounds,
     liveRound,
     roundUi,
     errorMessage,
     setScreenshotData,
+    setRecentScreenshots,
     setIsLoading,
     addSolutionChunk,
     addReasoningChunk,
@@ -64,10 +67,6 @@ export function AppContent() {
     pendingReasoning.current = []
   }, [])
 
-  const [recentScreenshots, setRecentScreenshots] = useState<string[]>([])
-  // Main keeps only the last 5 thumbnails, but every screenshot went to the AI
-  const [screenshotTotal, setScreenshotTotal] = useState(0)
-
   useEffect(() => {
     // Listen for screenshot events (latest)
     window.api.onScreenshotTaken((data: string) => {
@@ -76,8 +75,7 @@ export function AppContent() {
 
     // Listen for screenshots-updated events (gallery)
     window.api.onScreenshotsUpdated((screenshots: string[], total: number) => {
-      setRecentScreenshots(screenshots)
-      setScreenshotTotal(total)
+      setRecentScreenshots(screenshots, total)
     })
 
     // New session clear (pictures + answers)
@@ -85,10 +83,6 @@ export function AppContent() {
       // Chunks still buffered belong to the answer being cleared
       discardPendingChunks()
       clearSolution()
-      setRecentScreenshots([])
-      setScreenshotTotal(0)
-      setScreenshotData(null)
-      setErrorMessage(null)
     })
 
     // Listen for solution chunks, buffered until the next frame (see pendingChunks)
@@ -140,6 +134,7 @@ export function AppContent() {
     }
   }, [
     setScreenshotData,
+    setRecentScreenshots,
     clearSolution,
     setIsLoading,
     flushChunks,
