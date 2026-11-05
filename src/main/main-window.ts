@@ -16,6 +16,10 @@ export function createWindow(): void {
     hasShadow: false,
     // Native resize toggling breaks transparency on Windows; renderer handles own resizing.
     resizable: false,
+    // The default app menu binds F11 to Toggle Full Screen. This window grows
+    // to the whole screen but still reports isFullScreen() false on Windows, so
+    // a second F11 tries to enter again and there is no way back
+    fullscreenable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     hiddenInMissionControl: true,
