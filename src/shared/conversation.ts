@@ -4,11 +4,16 @@
 
 /** `auto` asks for a hint as soon as the other side finishes a sentence; `manual` waits for the shortcut */
 export type HintMode = 'auto' | 'manual'
+export type AudioSource = 'system' | 'microphone'
+export type ConversationAudioMode = 'dual' | 'system' | 'microphone'
 
 /** One sentence of the other side, as the speech recogniser reports it */
 export interface Utterance {
   /** Increasing from 1 within a conversation */
   id: number
+  source?: AudioSource
+  updatedAt?: number
+  finalAt?: number
   text: string
   /** False while the recogniser is still revising it */
   final: boolean
@@ -36,6 +41,13 @@ export interface HintCard {
   error?: string
   /** From the request to the first chunk, in ms; absent until the first chunk */
   latencyMs?: number
+  speechLatencyMs?: number
+  requestedAt?: number
+  firstTextAt?: number
+  visibleLatencyMs?: number
+  visibleSpeechLatencyMs?: number
+  historyTokens?: number
+  historyRounds?: number
 }
 
 export interface ConversationSnapshot {

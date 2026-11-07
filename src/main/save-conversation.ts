@@ -63,7 +63,7 @@ export function formatConversation({
   const closeRound = (card?: HintCard) => {
     const parts: string[] = []
     if (heard.length > 0) {
-      parts.push('**对方**', heard.map((text) => `> ${text}`).join('\n>\n'))
+      parts.push('**语音原文**', heard.map((text) => `> ${text}`).join('\n>\n'))
     }
     if (card) parts.push(hintLabel(card), card.text.trim())
     rounds.push(parts.join('\n\n'))
@@ -74,7 +74,9 @@ export function formatConversation({
   for (const utterance of spoken) {
     while (next < shown.length && shown[next].toId < utterance.id) closeRound(shown[next++])
     // A sentence is one line from the recogniser; a stray line break would end the quote
-    heard.push(utterance.text.trim().replace(/\s*\n\s*/g, ' '))
+    heard.push(
+      `${utterance.source === 'microphone' ? '【我·麦克风】' : '【面试官·电脑声音】'}${utterance.text.trim().replace(/\s*\n\s*/g, ' ')}`
+    )
   }
   while (next < shown.length) closeRound(shown[next++])
   if (heard.length > 0) closeRound()

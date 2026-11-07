@@ -1,3 +1,4 @@
+import type { ConversationAudioMode } from '../../../../shared/conversation'
 import { FileText, Lightbulb, MessagesSquare, TriangleAlert } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -34,6 +35,10 @@ export function ConversationSection({
 }) {
   const {
     dashscopeApiKey,
+    conversationContextEnabled,
+    conversationContextRounds,
+    conversationContextTokenBudget,
+    conversationAudioMode,
     conversationHintMode,
     conversationSilenceMs,
     conversationMinChars,
@@ -63,6 +68,86 @@ export function ConversationSection({
           <ModeProfileSelect mode="conversation" onEdit={onEditProfile} />
           <SceneEditor mode="conversation" />
           <KnowledgeField mode="conversation" onOpen={onOpenKnowledge} />
+        </div>
+      </SettingsCard>
+
+      <SettingsCard Icon={MessagesSquare} title="摘要上下文与双路录音">
+        <div className="space-y-4">
+          <Field
+            label="加载摘要上下文"
+            note="仅加载最近几轮已完成的摘要，当前问题完整发送；后台压缩不阻塞新问题，未完成的摘要暂时跳过"
+          >
+            <Switch
+              aria-label="加载摘要上下文"
+              checked={conversationContextEnabled}
+              onCheckedChange={(checked) => updateSetting('conversationContextEnabled', checked)}
+            />
+          </Field>
+          <Field
+            label="历史轮数"
+            note="默认最近 3 轮；一轮为面试官问题与对应 AI 建议。我的实际发言另行标注"
+          >
+            <input
+              aria-label="历史轮数"
+              type="number"
+              min={1}
+              max={20}
+              value={conversationContextRounds}
+              disabled={!conversationContextEnabled}
+              onChange={(e) =>
+                updateSetting(
+                  'conversationContextRounds',
+                  Math.min(20, Math.max(1, Number(e.target.value) || 1))
+                )
+              }
+              className="w-24 rounded-md border border-input bg-transparent px-3 py-2 text-sm disabled:opacity-50"
+            />
+          </Field>
+          <Field
+            label="历史摘要预算"
+            note="约估 token，默认 1000，限制全部历史背景，不截断当前问题；越大可能增加首字等待"
+          >
+            <input
+              aria-label="历史摘要预算"
+              type="number"
+              min={100}
+              max={4000}
+              step={100}
+              value={conversationContextTokenBudget}
+              disabled={!conversationContextEnabled}
+              onChange={(e) =>
+                updateSetting(
+                  'conversationContextTokenBudget',
+                  Math.min(4000, Math.max(100, Number(e.target.value) || 100))
+                )
+              }
+              className="w-24 rounded-md border border-input bg-transparent px-3 py-2 text-sm disabled:opacity-50"
+            />
+          </Field>
+          <Field
+            label="对话录音来源"
+            note="默认同时录入电脑声音与麦克风，分别识别；只有电脑声音自动触发提示。改变后重新开始监听。双路会增加语音识别用量；建议戴耳机避免重复收音"
+          >
+            <Select
+              value={conversationAudioMode}
+              onValueChange={(value) =>
+                updateSetting('conversationAudioMode', value as ConversationAudioMode)
+              }
+            >
+              <SelectTrigger className="w-60 shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dual">电脑声音 + 我的麦克风（默认）</SelectItem>
+                <SelectItem value="system">仅电脑声音</SelectItem>
+                <SelectItem value="microphone">仅麦克风（只记入上下文）</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <p className="text-xs text-app-muted-fg">
+            当前问题优先，AI
+            建议不代表我实际说过。压缩使用当前对话模型在空闲时执行，新问题会抢占摘要请求。
+          </p>
         </div>
       </SettingsCard>
 

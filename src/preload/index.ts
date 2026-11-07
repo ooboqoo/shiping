@@ -1,3 +1,4 @@
+import type { AudioSource } from '../shared/conversation'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../main/settings'
@@ -371,6 +372,8 @@ const api = {
   // 对话模式: main owns the conversation, the page takes a snapshot and follows the events
   getConversationSnapshot: () =>
     ipcRenderer.invoke('conversation:get-snapshot') as Promise<ConversationSnapshot>,
+  reportFirstVisible: (id: number, requestedAt: number) =>
+    ipcRenderer.invoke('conversation:first-visible', id, requestedAt),
   requestHint: () => ipcRenderer.invoke('conversation:request-hint'),
   stopHints: () => ipcRenderer.invoke('conversation:stop-hints'),
   clearConversation: () => ipcRenderer.invoke('conversation:clear'),
@@ -434,8 +437,8 @@ const api = {
   startTranscription: (apiKey: string, options?: TranscriptionOptions) =>
     ipcRenderer.invoke('start-transcription', apiKey, options),
   stopTranscription: () => ipcRenderer.invoke('stop-transcription'),
-  sendTranscriptionAudioChunk: (chunk: ArrayBuffer) =>
-    ipcRenderer.send('transcription-audio-chunk', chunk),
+  sendTranscriptionAudioChunk: (chunk: ArrayBuffer, source: AudioSource = 'system') =>
+    ipcRenderer.send('transcription-audio-chunk', chunk, source),
   getTranscriptionText: () => ipcRenderer.invoke('get-transcription-text') as Promise<string>,
 
   onToggleTranscription: (callback: () => void) => {

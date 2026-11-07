@@ -1,6 +1,9 @@
 import { app, ipcMain } from 'electron'
 import type { ModelMessage } from 'ai'
-import { getHintStream } from './ai'
+import { getHintStream, summarizeConversation } from './ai'
+import { SummaryQueue } from './conversation-summaries'
+import { buildBackground, fitTokens, normalizeContextOptions } from '../shared/conversation-context'
+import { estimateTokens } from '../shared/knowledge'
 import { settings, getModeProfile, onSettingsChanged } from './settings'
 import { saveConversation, saveConversationSync } from './save-conversation'
 import { consumeStream, extractErrorMessage } from './stream'
@@ -8,8 +11,10 @@ import { isTranscriptionRunning, onConversationSentence, onTranscriptionEnd } fr
 import { markMobileDirty, registerMobileSource } from './mobile-sync'
 import {
   countMeaningfulChars,
+  NO_REPLY,
   type ConversationSnapshot,
   type HintCard,
+  type AudioSource,
   type Utterance
 } from '../shared/conversation'
 
@@ -30,8 +35,15 @@ import {
  */
 
 /** How much earlier conversation goes along as context, whichever runs out first */
-const CONTEXT_UTTERANCES = 20
-const CONTEXT_CHARS = 1500
+const summaryQueue = new SummaryQueue(summarizeConversation)
+
+function contextOptions() {
+  return normalizeContextOptions({
+    enabled: settings.conversationContextEnabled,
+    rounds: settings.conversationContextRounds,
+    tokenBudget: settings.conversationContextTokenBudget
+  })
+}
 
 /**
  * The 外部知识库 searches with the sentences a hint is for; shorter than this
@@ -122,9 +134,8 @@ function minChars(): number {
 }
 
 /** The sentence the recogniser is still revising, if any */
-function openUtterance(): Utterance | undefined {
-  const last = utterances.at(-1)
-  return last && !last.final ? last : undefined
+function openUtterance(source: AudioSource = 'system'): Utterance | undefined {
+  return utterances.findLast((u) => (u.source ?? 'system') === source && !u.final)
 }
 
 function waitingCard(): HintCard | undefined {
@@ -137,12 +148,13 @@ function stopStream(cardId: number) {
   streams.delete(cardId)
 }
 
-function handleSentence(text: string, final: boolean) {
-  let utterance = openUtterance()
+function handleSentence(text: string, final: boolean, source: AudioSource = 'system') {
+  if (source === 'system' && text.trim()) summaryQueue.pause()
+  let utterance = openUtterance(source)
   if (!utterance) {
     // The recogniser reports silence as an empty sentence; nothing to show
     if (!text.trim()) return
-    utterance = { id: nextUtteranceId++, text, final }
+    utterance = { id: nextUtteranceId++, text, final, source }
     utterances.push(utterance)
     startedAt ||= Date.now()
   } else {
@@ -150,19 +162,24 @@ function handleSentence(text: string, final: boolean) {
     utterance.final = final
   }
 
+  utterance.updatedAt = Date.now()
+  if (final) utterance.finalAt = Date.now()
   if (final && !utterance.text.trim()) {
-    utterances.pop()
+    utterances = utterances.filter((u) => u.id !== utterance!.id)
     send('conversation-utterance-removed', utterance.id)
     scheduleSave()
     // What withdrew a hint came to nothing: write it for what it had
     const waiting = waitingCard()
-    if (waiting) void startHint(waiting, waiting.fromId, waiting.toId, 'auto')
+    if (source === 'system' && waiting)
+      void startHint(waiting, waiting.fromId, waiting.toId, 'auto')
     return
   }
   publishUtterance(utterance)
 
+  if (source === 'microphone') return
   if (final) onSentenceFinished(utterance)
   else onSentenceGrowing(utterance)
+  if (final && !streams.size && !waitingCard() && contextOptions().enabled) summaryQueue.resume()
 }
 
 /**
@@ -218,33 +235,51 @@ function createCard(fromId: number, toId: number): HintCard {
  * hint is for. `previous` asks for a different take on an earlier hint.
  */
 function buildMessages(fromId: number, toId: number, previous?: string): ModelMessage[] {
-  const context: string[] = []
-  let chars = 0
-  const earlier = utterances.filter((u) => u.id < fromId && u.text.trim())
-  // Most recent first, until the budget runs out
-  for (let i = earlier.length - 1; i >= 0 && context.length < CONTEXT_UTTERANCES; i--) {
-    chars += earlier[i].text.length
-    if (chars > CONTEXT_CHARS && context.length > 0) break
-    context.unshift(earlier[i].text)
-  }
-
-  const focus = utterances.filter((u) => u.id >= fromId && u.id <= toId && u.text.trim())
+  const nextQuestion = utterances.find((u) => u.source !== 'microphone' && u.id > toId)
+  const self = utterances
+    .filter(
+      (u) =>
+        u.source === 'microphone' &&
+        u.id >= fromId &&
+        u.id < (nextQuestion?.id ?? Infinity) &&
+        u.text.trim()
+    )
+    .map((u) => u.text)
+    .join('\n')
+  const context = buildBackground({
+    hints,
+    utterances,
+    summaries: summaryQueue.summaries,
+    fromId,
+    self,
+    previous,
+    ...contextOptions()
+  })
+  const focus = utterances.filter(
+    (u) => u.id >= fromId && u.id <= toId && u.source !== 'microphone' && u.text.trim()
+  )
   const unfinished = focus.length > 0 && !focus[focus.length - 1].final
 
   const parts: string[] = []
-  if (context.length > 0) parts.push(`【之前对方说过的话】\n${context.join('\n')}`)
+  if (context) parts.push(context)
   parts.push(
     `【对方刚才说的话】${unfinished ? '（还没说完）' : ''}\n${focus.map((u) => u.text).join('\n')}`
   )
-  if (previous?.trim()) {
-    parts.push(`【上一版提示】\n${previous}\n\n请换一个角度重新给出提示，不要重复上一版。`)
-  }
-  return [{ role: 'user', content: parts.join('\n\n') }]
+  return [
+    {
+      role: 'user',
+      content:
+        parts.join('\n\n') +
+        '\n\n优先直接回答【对方刚才说的话】，先给有用结论，再补充必要解释。历史摘要和我的实际发言只用于理解指代、延续话题，不能替代当前问题。'
+    }
+  ]
 }
 
 /** What the 外部知识库 is asked for a hint on `fromId`..`toId`, see `SHORT_QUERY_CHARS` */
 function hintQuery(fromId: number, toId: number): string {
-  const spoken = utterances.filter((u) => u.id <= toId && u.text.trim())
+  const spoken = utterances.filter(
+    (u) => u.source !== 'microphone' && u.id <= toId && u.text.trim()
+  )
   const focus = spoken.filter((u) => u.id >= fromId).map((u) => u.text.trim())
   const before = spoken.filter((u) => u.id < fromId).at(-1)
   if (before && focus.join('').length < SHORT_QUERY_CHARS) focus.unshift(before.text.trim())
@@ -259,6 +294,8 @@ async function startHint(
   source: HintCard['source'],
   previous?: string
 ): Promise<void> {
+  summaryQueue.pause()
+  summaryQueue.invalidate(card.id)
   stopStream(card.id)
   Object.assign(card, {
     fromId,
@@ -268,7 +305,12 @@ async function startHint(
     text: '',
     reasoning: '',
     error: undefined,
-    latencyMs: undefined
+    latencyMs: undefined,
+    speechLatencyMs: undefined,
+    firstTextAt: undefined,
+    visibleLatencyMs: undefined,
+    visibleSpeechLatencyMs: undefined,
+    requestedAt: Date.now()
   } satisfies Partial<HintCard>)
   hintedUpTo = Math.max(hintedUpTo, toId)
   publishHint(card)
@@ -286,6 +328,10 @@ async function startHint(
   streams.set(card.id, stream)
   const messages = buildMessages(fromId, toId, previous)
   const query = hintQuery(fromId, toId)
+  const background = String(messages[0].content).split('【对方刚才说的话】')[0]
+  card.historyTokens = estimateTokens(background)
+  card.historyRounds = (background.match(/【第 \d+ 轮摘要】/g) ?? []).length
+  publishHint(card)
   const outcome = await consumeStream(
     (signal) => getHintStream(messages, signal, query),
     stream.controller,
@@ -296,7 +342,16 @@ async function startHint(
         card.reasoning += chunk.delta
         return
       }
-      card.latencyMs ??= Date.now() - stream.startedAt
+      if (!chunk.delta) return
+      if (card.firstTextAt === undefined && /[\p{L}\p{N}\p{S}]/u.test(chunk.delta)) {
+        card.firstTextAt = Date.now()
+        card.latencyMs = card.firstTextAt - stream.startedAt
+        const lastQuestion = utterances
+          .filter((u) => u.source !== 'microphone' && u.id >= fromId && u.id <= toId)
+          .at(-1)
+        card.speechLatencyMs = card.firstTextAt - (lastQuestion?.finalAt ?? stream.startedAt)
+        publishHint(card)
+      }
       card.text += chunk.delta
       send('conversation-hint-chunk', card.id, chunk.delta)
     }
@@ -316,6 +371,28 @@ async function startHint(
   }
   card.status = 'done'
   publishHint(card)
+  if (
+    contextOptions().enabled &&
+    contextOptions().rounds &&
+    card.text.trim() &&
+    card.text.trim() !== NO_REPLY
+  ) {
+    const question = utterances
+      .filter((u) => u.source !== 'microphone' && u.id >= fromId && u.id <= toId)
+      .map((u) => u.text)
+      .join('\n')
+    summaryQueue.enqueue(
+      card.id,
+      `面试官问题：${fitTokens(question, 1500)}\n我的实际发言：${fitTokens(
+        utterances
+          .filter((u) => u.source === 'microphone' && u.id >= fromId && u.id <= toId)
+          .map((u) => u.text)
+          .join('\n'),
+        500
+      )}\nAI建议（不代表我实际说过）：${fitTokens(card.text, 2000)}`
+    )
+  }
+  if (contextOptions().enabled && !streams.size && !openUtterance()) summaryQueue.resume()
 }
 
 /**
@@ -324,7 +401,7 @@ async function startHint(
  * last hint.
  */
 export function requestHint(): void {
-  const latest = utterances.at(-1)
+  const latest = utterances.filter((u) => u.source !== 'microphone').at(-1)
   const current = [...hints]
     .reverse()
     .find((card) => card.status === 'streaming' || card.status === 'waiting')
@@ -341,7 +418,7 @@ export function requestHint(): void {
     return
   }
   const last = hints.at(-1)
-  if (last) {
+  if (last && latest) {
     void startHint(last, last.fromId, last.toId, 'manual', last.text)
     return
   }
@@ -363,6 +440,7 @@ export function stopHints(): void {
 }
 
 export function clearConversation(): void {
+  summaryQueue.clear()
   for (const id of [...streams.keys()]) stopStream(id)
   // The last changes still go into this conversation's file; the next one gets its own
   if (saveTimer) saveNow()
@@ -406,16 +484,19 @@ onConversationSentence(handleSentence)
 
 // Stopping mid-sentence keeps what was heard: the recogniser will not finish it now
 onTranscriptionEnd(() => {
-  const open = openUtterance()
-  if (!open) return
-  open.final = true
-  publishUtterance(open)
+  for (const open of utterances.filter((u) => !u.final)) {
+    open.final = true
+    open.finalAt = Date.now()
+    publishUtterance(open)
+  }
   const waiting = waitingCard()
-  if (waiting) void startHint(waiting, waiting.fromId, open.id, 'auto')
+  if (waiting) void startHint(waiting, waiting.fromId, waiting.toId, 'auto')
 })
 
 // Turned on (or pointed at another folder) mid-conversation: save what is there already
 onSettingsChanged((previous) => {
+  if (!contextOptions().enabled) summaryQueue.pause()
+  else if (!streams.size) summaryQueue.resume()
   if (!settings.conversationAutoSave) return
   if (
     previous.conversationAutoSave &&
@@ -438,3 +519,12 @@ ipcMain.handle('conversation:get-snapshot', () => getSnapshot())
 ipcMain.handle('conversation:request-hint', () => requestHint())
 ipcMain.handle('conversation:stop-hints', () => stopHints())
 ipcMain.handle('conversation:clear', () => clearConversation())
+
+ipcMain.handle('conversation:first-visible', (_event, id: number, requestedAt: number) => {
+  const card = hints.find((h) => h.id === id && h.requestedAt === requestedAt)
+  if (!card || card.firstTextAt === undefined || card.visibleLatencyMs !== undefined) return
+  card.visibleLatencyMs = Date.now() - requestedAt
+  card.visibleSpeechLatencyMs =
+    card.visibleLatencyMs + (card.speechLatencyMs ?? 0) - (card.latencyMs ?? 0)
+  publishHint(card)
+})

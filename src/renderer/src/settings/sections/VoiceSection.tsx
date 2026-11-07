@@ -22,7 +22,8 @@ export function VoiceSection() {
         const devices = await navigator.mediaDevices.enumerateDevices()
         const needsPermission = devices.every((d) => !d.label)
         if (needsPermission) {
-          await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          const probe = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          probe.getTracks().forEach((track) => track.stop())
         }
         const refreshed = await navigator.mediaDevices.enumerateDevices()
         setAudioDevices(refreshed)
@@ -62,7 +63,7 @@ export function VoiceSection() {
 
         <Field
           label="音频输入设备"
-          note="默认捕获系统音频，即会议里对方的声音；对话模式请保持系统音频，否则自己说话也会触发提示"
+          note="截图模式：默认捕获系统音频。双路对话模式：此处选定的设备用作我的麦克风，未选则使用默认麦克风；电脑声音单独采集"
         >
           <Select
             value={audioInputDeviceId || 'system'}
@@ -87,7 +88,7 @@ export function VoiceSection() {
         </Field>
 
         <Advanced defaultOpen={!!audioOutputDeviceId}>
-          <Field label="音频输出设备" note="用于转录时的监听输出">
+          <Field label="音频输出设备" note="用于录音处理的输出设备，麦克风不会回放到扬声器">
             <Select
               value={audioOutputDeviceId || 'default'}
               onValueChange={(val) =>

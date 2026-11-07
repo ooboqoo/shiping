@@ -1,72 +1,102 @@
 import { useSettingsStore } from '@/lib/store/settings'
 import { isMac } from '@/lib/utils/env'
+import type { AudioSource, ConversationAudioMode } from '../../../shared/conversation'
 
-let mediaStream: MediaStream | null = null
+const streams: MediaStream[] = []
+const processors: ScriptProcessorNode[] = []
 let audioContext: AudioContext | null = null
-let processor: ScriptProcessorNode | null = null
+let stopping = false
+let generation = 0
 
-function downsampleAndSend(float32: Float32Array): void {
+function sendPCM(float32: Float32Array, source: AudioSource): void {
   const int16 = new Int16Array(float32.length)
   for (let i = 0; i < float32.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32[i]))
-    int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+    const sample = Math.max(-1, Math.min(1, float32[i]))
+    int16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff
   }
-  window.api.sendTranscriptionAudioChunk(int16.buffer)
+  window.api.sendTranscriptionAudioChunk(int16.buffer, source)
 }
-
-async function openMicrophoneStream(deviceId: string): Promise<MediaStream> {
+async function openMicrophone(deviceId: string): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
-    audio: { deviceId: { exact: deviceId } },
+    audio: {
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      echoCancellation: true,
+      noiseSuppression: true
+    },
     video: false
   })
 }
-
-async function openSystemAudioStream(): Promise<MediaStream> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    audio: true,
-    video: true
-  })
-  stream.getVideoTracks().forEach((t) => t.stop())
+async function openSystem(): Promise<MediaStream> {
+  const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
+  stream.getVideoTracks().forEach((track) => track.stop())
+  if (!stream.getAudioTracks().length) {
+    stream.getTracks().forEach((track) => track.stop())
+    throw new Error('未获得电脑声音，请确认共享了系统音频')
+  }
   return stream
 }
 
-export async function startAudioCapture(): Promise<void> {
+/** With no options, preserve screenshot mode's selected input and single ASR session. */
+export async function startAudioCapture(options?: {
+  mode: ConversationAudioMode
+}): Promise<AudioSource[]> {
+  stopAudioCapture()
+  stopping = false
+  const current = ++generation
   const { audioInputDeviceId, audioOutputDeviceId } = useSettingsStore.getState()
-
-  let stream: MediaStream
-  if (audioInputDeviceId) {
-    try {
-      stream = await openMicrophoneStream(audioInputDeviceId)
-    } catch (err) {
-      console.warn('Failed to open selected microphone, falling back to system audio:', err)
-      stream = await openSystemAudioStream()
+  const sources: AudioSource[] = options
+    ? options.mode === 'dual'
+      ? ['system', 'microphone']
+      : [options.mode]
+    : ['system']
+  try {
+    audioContext = new AudioContext({ sampleRate: 16000 })
+    if (audioOutputDeviceId && 'setSinkId' in audioContext) {
+      try {
+        await (
+          audioContext as AudioContext & { setSinkId: (id: string) => Promise<void> }
+        ).setSinkId(audioOutputDeviceId)
+      } catch (error) {
+        console.warn('Failed to set audio output device:', error)
+      }
     }
-  } else {
-    stream = await openSystemAudioStream()
-  }
-
-  mediaStream = stream
-
-  audioContext = new AudioContext({ sampleRate: 16000 })
-
-  if (audioOutputDeviceId && 'setSinkId' in audioContext) {
-    try {
-      await (audioContext as AudioContext & { setSinkId: (id: string) => Promise<void> }).setSinkId(
-        audioOutputDeviceId
-      )
-    } catch (err) {
-      console.warn('Failed to set audio output device:', err)
+    for (const source of sources) {
+      let stream: MediaStream
+      if (!options && audioInputDeviceId) {
+        try {
+          stream = await openMicrophone(audioInputDeviceId)
+        } catch {
+          stream = await openSystem()
+        }
+      } else
+        stream = await (source === 'microphone' ? openMicrophone(audioInputDeviceId) : openSystem())
+      if (current !== generation) {
+        stream.getTracks().forEach((track) => track.stop())
+        throw new Error('录音启动已取消')
+      }
+      streams.push(stream)
+      for (const track of stream.getAudioTracks())
+        track.addEventListener('ended', () => {
+          if (stopping || current !== generation) return
+          stopAudioCapture()
+          void window.api.stopTranscription()
+        })
+      const node = audioContext!.createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
+      const processor = audioContext!.createScriptProcessor(2048, 1, 1)
+      processor.onaudioprocess = (event) => sendPCM(event.inputBuffer.getChannelData(0), source)
+      // Keep the processing graph alive without feeding either input back to speakers.
+      const mute = audioContext!.createGain()
+      mute.gain.value = 0
+      node.connect(processor)
+      processor.connect(mute)
+      mute.connect(audioContext!.destination)
+      processors.push(processor)
     }
+    return sources
+  } catch (error) {
+    if (current === generation) stopAudioCapture()
+    throw error
   }
-
-  const source = audioContext.createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
-
-  processor = audioContext.createScriptProcessor(2048, 1, 1)
-  processor.onaudioprocess = (e) => {
-    downsampleAndSend(e.inputBuffer.getChannelData(0))
-  }
-  source.connect(processor)
-  processor.connect(audioContext.destination)
 }
 
 /**
@@ -84,16 +114,17 @@ export function describeCaptureError(failure: string, err: unknown): string {
 }
 
 export function stopAudioCapture(): void {
-  if (processor) {
+  stopping = true
+  generation++
+  for (const processor of processors) {
+    processor.onaudioprocess = null
     processor.disconnect()
-    processor = null
   }
+  processors.length = 0
+  for (const stream of streams) stream.getTracks().forEach((track) => track.stop())
+  streams.length = 0
   if (audioContext) {
-    audioContext.close()
+    void audioContext.close()
     audioContext = null
-  }
-  if (mediaStream) {
-    mediaStream.getTracks().forEach((t) => t.stop())
-    mediaStream = null
   }
 }
