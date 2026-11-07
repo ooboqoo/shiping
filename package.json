@@ -1,6 +1,6 @@
 {
   "name": "shiping",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "description": "识屏 Shiping：截屏 + AI 理解，屏幕上的内容截一下就有解答，听对话实时出提示；支持屏幕共享时隐身（效果因环境而异，请自行测试）",
   "main": "./out/main/index.js",
   "devEngines": {
