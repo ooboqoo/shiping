@@ -6,17 +6,17 @@
 
 ## 功能一览
 
-### 截图模式
-
-按 `⌥ Enter`（Windows 为 `Ctrl+Enter`）截取屏幕，视觉模型流式给出解答。题目一屏放不下就按 `⌥⇧ Enter`（Windows 为 `Ctrl+Shift+Enter`）追加截图，也可以追问，上下文连续。
-
-![截图模式演示](docs/demo-videos/1-screenshot-mode.gif)
-
 ### 框选识别
 
 按 `⌥⇧ S`（Windows 为 `Ctrl+Alt+S`）或单击菜单栏（Windows 为通知区域）里的识屏图标，拖出要识别的一块，松开鼠标就有解答；看完按 `Esc`，窗口隐藏，键盘回到原来的应用。看不懂的代码、报错、图表、外文，框出来就有解释或翻译。还有下一部分就按 `⌥⇧ A`（Windows 为 `Ctrl+Alt+A`）框选追加截图，接在当前对话后面一起解答。想针对框出的这块问点什么，就按住 `Shift` 再松开鼠标：截图先不发，写好问题按 `Enter` 一起发给 AI；习惯每次都先提问的，在「设置 → 截图模式 → 框选后」选「先输入问题」，这时按住 `Shift` 松开就是直接发送。识屏因此可以常驻后台，窗口隐藏时只占用「隐藏 / 显示窗口」「框选识别」「框选追加截图」三个快捷键。
 
 ![框选识别演示：框出一段英文，出中文翻译](docs/demo-videos/2-snip.gif)
+
+### 截图模式
+
+按 `⌥ Enter`（Windows 为 `Ctrl+Enter`）截取屏幕，视觉模型流式给出解答。题目一屏放不下就按 `⌥⇧ Enter`（Windows 为 `Ctrl+Shift+Enter`）追加截图，也可以追问，上下文连续。
+
+![截图模式演示](docs/demo-videos/1-screenshot-mode.gif)
 
 ### 对话模式
 
