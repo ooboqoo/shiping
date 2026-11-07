@@ -53,14 +53,30 @@ function spanRect(a: Point, b: Point): RegionRect {
   }
 }
 
-const confirm = (rect: RegionRect): void => window.api.finishRegionPicker(rect)
+/** `shift`: held as a one-off drag ended, the other of 「框选后」's two behaviours */
+const confirm = (rect: RegionRect, shift = false): void =>
+  window.api.finishRegionPicker(rect, shift)
 const cancel = (): void => window.api.finishRegionPicker(null)
+
+/** What releasing the drag does, and Shift + release, as 「框选后」 is set */
+function snipHint({ append, askFirst }: PickerData): string {
+  if (askFirst) {
+    return append
+      ? '松开鼠标后输入问题再追加；按住 Shift 松开直接追加到当前对话'
+      : '松开鼠标后输入问题；按住 Shift 松开直接发给 AI'
+  }
+  return append
+    ? '松开鼠标即追加到当前对话；按住 Shift 松开可先输入问题'
+    : '松开鼠标即截图发给 AI；按住 Shift 松开可先输入问题'
+}
 
 /**
  * One screen's worth of the capture-region picker (see main/region-picker.ts):
  * a frozen capture of the screen to drag a rectangle on. It starts from the
  * region already saved on this screen, if any. Picking a one-off screenshot,
- * the drag ends the pick, like the system's own area screenshot.
+ * the drag ends the pick, like the system's own area screenshot; Shift held as
+ * it ends does the other of 「框选后」's two (send at once / ask a question
+ * first), with no extra shortcut to hold.
  */
 export default function RegionPicker() {
   const [data, setData] = useState<PickerData | null>(null)
@@ -110,7 +126,7 @@ export default function RegionPicker() {
     const point = pointOf(e)
     if (!dragging && !isDrag(start, point)) return
     const picked = spanRect(start, point)
-    if (picked.width > 0 && picked.height > 0) confirm(picked)
+    if (picked.width > 0 && picked.height > 0) confirm(picked, e.shiftKey)
   }
 
   const handlePointerCancel = () => {
@@ -171,9 +187,7 @@ export default function RegionPicker() {
           {oneShot ? (
             <>
               <span>{data.append ? '拖动鼠标框选要追加的区域' : '拖动鼠标框选要识别的区域'}</span>
-              <span className="text-xs text-neutral-400">
-                {data.append ? '松开鼠标即追加到当前对话' : '松开鼠标即截图发给 AI'}，Esc 取消
-              </span>
+              <span className="text-xs text-neutral-400">{snipHint(data)}，Esc 取消</span>
             </>
           ) : (
             <>

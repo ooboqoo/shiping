@@ -20,6 +20,13 @@ import type {
   ExternalKnowledgeTestResult
 } from '../shared/external-knowledge'
 
+/** A 框选 screenshot waiting for the user's question; `append`: it joins the current conversation */
+export interface SnipQuestion {
+  /** base64 PNG */
+  image: string
+  append: boolean
+}
+
 // Custom APIs for renderer
 const api = {
   // Get the installed app version (package.json version at build time)
@@ -169,6 +176,16 @@ const api = {
   },
   // Hide the window as the shortcut does, handing the keyboard back if it had it
   hideMainWindow: () => ipcRenderer.invoke('hideMainWindow'),
+  // A 框选 screenshot held back for a question (「框选后」 or Shift), or null once it is gone
+  onSnipQuestion: (callback: (pending: SnipQuestion | null) => void) => {
+    ipcRenderer.on('snip-question', (_event, pending: SnipQuestion | null) => callback(pending))
+  },
+  removeSnipQuestionListener: () => {
+    ipcRenderer.removeAllListeners('snip-question')
+  },
+  // Send the held screenshot with the question (empty: as 框选识别 would), or drop it
+  sendSnipQuestion: (question: string) => ipcRenderer.invoke('sendSnipQuestion', question),
+  cancelSnipQuestion: () => ipcRenderer.invoke('cancelSnipQuestion'),
 
   // A screenshot was refused because this profile's model takes no images
   onVisionUnsupported: (callback: (profileId: string) => void) => {
@@ -331,7 +348,9 @@ const api = {
   getRegionPickerData: () =>
     ipcRenderer.invoke('getRegionPickerData') as Promise<RegionPickerData | null>,
   regionPickerReady: () => ipcRenderer.send('region-picker-ready'),
-  finishRegionPicker: (rect: RegionRect | null) => ipcRenderer.send('finish-region-picker', rect),
+  // `shift`: held as a one-off drag ended, which swaps 「框选后」's two behaviours
+  finishRegionPicker: (rect: RegionRect | null, shift = false) =>
+    ipcRenderer.send('finish-region-picker', rect, shift),
   // A new capture region was picked (from any entry point); the store persists it
   onCaptureRegionPicked: (callback: (region: CaptureRegion) => void) => {
     ipcRenderer.on('capture-region-picked', (_event, region: CaptureRegion) => callback(region))

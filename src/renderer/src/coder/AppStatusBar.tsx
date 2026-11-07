@@ -199,16 +199,16 @@ export function AppStatusBar() {
         <DialogContent>
           <div className="py-4">
             <Textarea
-              placeholder="请输入追问内容，按 Ctrl+Enter 提交..."
+              placeholder="请输入追问内容，Enter 发送，Shift+Enter 换行"
               value={questionInput}
               className="min-h-24"
               onChange={(e) => setQuestionInput(e.target.value)}
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault()
-                  handleSubmitQuestion()
-                }
+                // As in the 框选 question box; the Enter that commits an input method's text is its own
+                if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return
+                e.preventDefault()
+                handleSubmitQuestion()
               }}
             />
           </div>
@@ -217,7 +217,7 @@ export function AppStatusBar() {
               取消
             </Button>
             <Button onClick={handleSubmitQuestion} disabled={!questionInput.trim()}>
-              提交
+              发送
             </Button>
           </DialogFooter>
         </DialogContent>

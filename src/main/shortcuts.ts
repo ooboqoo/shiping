@@ -147,6 +147,22 @@ function setSnipSession(active: boolean): void {
 }
 
 /**
+ * A 框选 screenshot held back while the user writes a question about it
+ * (`snipMode` 'ask', or Shift held as the drag ended with 'send'). The page shows it with a question box and
+ * sends it with `sendSnipQuestion`; until then the conversation on screen and
+ * any answer still streaming are left alone, so a cancel changes nothing.
+ * Any other screenshot sent meanwhile replaces it, and so does leaving the page
+ */
+let pendingSnip: { image: string; append: boolean } | null = null
+
+function setPendingSnip(next: typeof pendingSnip): void {
+  if (!pendingSnip && !next) return
+  pendingSnip = next
+  const mainWindow = global.mainWindow
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('snip-question', next)
+}
+
+/**
  * Give the keyboard back to the app the user was in, after hiding a window
  * that had it (`hadFocus`, read before hiding: a hidden window is never
  * focused). A window without it changes nothing: the app in front keeps it.
@@ -422,6 +438,8 @@ export function setIgnoreMouse(ignore: boolean): void {
 setPageChangeHandler(() => {
   // Esc 隐藏窗口 lives on 截图模式's page; leaving it ends what it was offered for
   setSnipSession(false)
+  // So does the question box of a held 框选 screenshot, which goes with the page
+  if (!state.inCoderPage) setPendingSnip(null)
   applyIgnoreMouse()
   broadcastAppState()
   // The toolbar now shows the other mode's buttons
@@ -568,8 +586,45 @@ function switchMode() {
   mainWindow.webContents.send('switch-mode')
 }
 
-/** Start a new conversation from one screenshot, with the transcription text not yet sent */
-async function startScreenshotConversation(mainWindow: BrowserWindow, screenshotData: string) {
+/**
+ * The words sent with a screenshot: the transcription not yet sent and a
+ * question typed for it (框选 with Shift), either or both. With neither the
+ * screenshot goes alone, and the scene prompt says what to do with it; a
+ * question is said to take precedence over the scene's "answer what is shown"
+ */
+function screenshotText(append: boolean, transcription: string, question: string): string {
+  if (append) {
+    const lead = transcription
+      ? `这是下一部分截图和语音转录内容：\n${transcription}\n`
+      : '这是下一部分截图，'
+    return question
+      ? `${lead}请结合之前所有截图和分析回答我的问题，以这个问题为准：\n${question}`
+      : `${lead}请结合之前所有截图和分析，继续分析解答，不要遗漏任何信息。`
+  }
+  if (!question) {
+    return transcription
+      ? `这是语音转录内容：\n${transcription}\n\n同时附上屏幕截图：`
+      : '这是屏幕截图'
+  }
+  const context = transcription ? `这是语音转录内容：\n${transcription}\n\n` : ''
+  return `${context}请结合附上的屏幕截图回答我的问题，以这个问题为准：\n${question}`
+}
+
+/** The words the 外部知识库 is searched with: a bare screenshot has none */
+const retrievalQuery = (transcription: string, question: string): string =>
+  [transcription, question].filter(Boolean).join('\n')
+
+/**
+ * Start a new conversation from one screenshot, with the transcription text
+ * not yet sent and the question typed for it, if any
+ */
+async function startScreenshotConversation(
+  mainWindow: BrowserWindow,
+  screenshotData: string,
+  question = ''
+) {
+  // A screenshot held for its question is overtaken by this one
+  setPendingSnip(null)
   saveScreenshotToDisk(screenshotData)
   const transcriptionText = getTranscriptionText()
   if (transcriptionText) {
@@ -582,9 +637,7 @@ async function startScreenshotConversation(mainWindow: BrowserWindow, screenshot
       content: [
         {
           type: 'text',
-          text: transcriptionText
-            ? `这是语音转录内容：\n${transcriptionText}\n\n同时附上屏幕截图：`
-            : '这是屏幕截图'
+          text: screenshotText(false, transcriptionText, question)
         },
         {
           type: 'image',
@@ -605,7 +658,8 @@ async function startScreenshotConversation(mainWindow: BrowserWindow, screenshot
   await runAnswer(
     mainWindow,
     streamContext,
-    (signal) => getSolutionStream(conversationMessages, signal, transcriptionText),
+    (signal) =>
+      getSolutionStream(conversationMessages, signal, retrievalQuery(transcriptionText, question)),
     (answer) => {
       if (!answer) return
       conversationMessages.push({ role: 'assistant', content: answer })
@@ -616,8 +670,16 @@ async function startScreenshotConversation(mainWindow: BrowserWindow, screenshot
   )
 }
 
-/** Add a screenshot to the current conversation, with the transcription text not yet sent */
-async function appendToConversation(mainWindow: BrowserWindow, screenshotData: string) {
+/**
+ * Add a screenshot to the current conversation, with the transcription text
+ * not yet sent and the question typed for it, if any
+ */
+async function appendToConversation(
+  mainWindow: BrowserWindow,
+  screenshotData: string,
+  question = ''
+) {
+  setPendingSnip(null)
   saveScreenshotToDisk(screenshotData)
   const transcriptionText = getTranscriptionText()
   if (transcriptionText) {
@@ -630,9 +692,7 @@ async function appendToConversation(mainWindow: BrowserWindow, screenshotData: s
     content: [
       {
         type: 'text',
-        text: transcriptionText
-          ? `这是下一部分截图和语音转录内容：\n${transcriptionText}\n请结合之前所有截图和分析，继续分析解答，不要遗漏任何信息。`
-          : '这是下一部分截图，请结合之前所有截图和分析，继续分析解答，不要遗漏任何信息。'
+        text: screenshotText(true, transcriptionText, question)
       },
       {
         type: 'image',
@@ -660,7 +720,8 @@ async function appendToConversation(mainWindow: BrowserWindow, screenshotData: s
   await runAnswer(
     mainWindow,
     streamContext,
-    (signal) => getGeneralStream(conversationMessages, signal, transcriptionText),
+    (signal) =>
+      getGeneralStream(conversationMessages, signal, retrievalQuery(transcriptionText, question)),
     (answer) => {
       if (!answer) return
       conversationMessages.push({ role: 'assistant', content: answer })
@@ -746,24 +807,32 @@ const callbacks: Record<string, () => void> = {
    * Drag out an area and get an answer about just that, leaving the capture
    * region alone: the screenshot-tool way, with the window kept hidden until
    * needed. So the answer is shown even if the window was hidden; a cancelled
-   * pick leaves the window as it was.
+   * pick leaves the window as it was. 「框选后」 (`snipMode`) can hold the
+   * screenshot back for a question instead (`pendingSnip`); Shift held as the
+   * drag ends does the other of the two.
    */
   snipScreenshot: async () => {
     const mainWindow = global.mainWindow
     if (!mainWindow || mainWindow.isDestroyed() || !state.inCoderPage) return
     if (!screenshotProfileReady(mainWindow)) return
 
-    const screenshotData = await whilePicking(mainWindow, pickScreenshot)
-    if (!screenshotData || mainWindow.isDestroyed()) return
+    const picked = await whilePicking(mainWindow, () =>
+      pickScreenshot({ askFirst: settings.snipMode === 'ask' })
+    )
+    if (!picked || mainWindow.isDestroyed()) return
     revealMainWindow(mainWindow)
-    // The picker had the keyboard; the window takes it over, for Esc
+    // The picker had the keyboard; the window takes it over, for Esc (and the question)
     mainWindow.focus()
     setSnipSession(true)
+    if (picked.ask) {
+      setPendingSnip({ image: picked.image, append: false })
+      return
+    }
     // The wait starts when the drag ends, not while the user is still picking
     startTiming()
     // A screenshot still being captured from before the drag ended loses to this one
     screenshotRequestId++
-    await startScreenshotConversation(mainWindow, screenshotData)
+    await startScreenshotConversation(mainWindow, picked.image)
   },
 
   // Append screenshot for continuous capture (if conversation exists)
@@ -807,17 +876,23 @@ const callbacks: Record<string, () => void> = {
       return
     }
 
-    const screenshotData = await whilePicking(mainWindow, () => pickScreenshot({ append: true }))
-    if (!screenshotData || mainWindow.isDestroyed()) return
+    const picked = await whilePicking(mainWindow, () =>
+      pickScreenshot({ append: true, askFirst: settings.snipMode === 'ask' })
+    )
+    if (!picked || mainWindow.isDestroyed()) return
     revealMainWindow(mainWindow)
     // The picker took the keyboard from the app in front; as after 框选识别 the
     // window keeps it, so Esc hides it
     mainWindow.focus()
     setSnipSession(true)
+    if (picked.ask) {
+      setPendingSnip({ image: picked.image, append: true })
+      return
+    }
     startTiming()
     // A screenshot still being captured from before the drag ended loses to this one
     screenshotRequestId++
-    await appendToConversation(mainWindow, screenshotData)
+    await appendToConversation(mainWindow, picked.image)
   },
 
   // Stop current AI solution stream, or 对话模式's hints
@@ -1185,6 +1260,32 @@ ipcMain.handle('setIgnoreMouse', (_event, ignore: boolean) => {
 })
 
 ipcMain.handle('pickCaptureRegion', () => pickRegion())
+
+/**
+ * Send the 框选 screenshot held for its question (`pendingSnip`), with the
+ * question; an empty one sends it as 框选识别 would have. An answer still
+ * streaming is replaced only now, as at the end of a pick without Shift
+ */
+ipcMain.handle('sendSnipQuestion', (_event, question: string) => {
+  const mainWindow = global.mainWindow
+  const pending = pendingSnip
+  if (!mainWindow || mainWindow.isDestroyed() || !pending || !state.inCoderPage) return
+  setPendingSnip(null)
+  if (!screenshotProfileReady(mainWindow)) return
+  startTiming()
+  // A screenshot still being captured from before the question was sent loses to this one
+  screenshotRequestId++
+  const text = typeof question === 'string' ? question.trim() : ''
+  // Appending needs a conversation; a new screenshot started one or none was left
+  if (pending.append && conversationMessages.length > 0) {
+    void appendToConversation(mainWindow, pending.image, text)
+  } else {
+    void startScreenshotConversation(mainWindow, pending.image, text)
+  }
+})
+
+// The question box was closed: the held screenshot is dropped, nothing else changes
+ipcMain.handle('cancelSnipQuestion', () => setPendingSnip(null))
 
 ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
   const mainWindow = global.mainWindow

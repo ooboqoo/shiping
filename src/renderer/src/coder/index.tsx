@@ -9,6 +9,7 @@ import { AppHeader } from './AppHeader'
 import { AppContent } from './AppContent'
 import { AppStatusBar } from './AppStatusBar'
 import { PrerequisitesChecker } from './PrerequisitesChecker'
+import { SnipQuestionDialog } from './SnipQuestionDialog'
 import { TranscriptionBar } from './TranscriptionBar'
 
 export default function CoderPage() {
@@ -98,6 +99,7 @@ export default function CoderPage() {
       <AppContent />
       <TranscriptionBar />
       <AppStatusBar />
+      <SnipQuestionDialog />
       <PrerequisitesChecker />
     </div>
   )

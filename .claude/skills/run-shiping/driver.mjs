@@ -220,6 +220,60 @@ const COMMANDS = {
       : `refused ${name} (not a toolbar button of the mode on screen, TOOLBAR_LAYOUT in src/shared/toolbar.ts)`
   },
 
+  /**
+   * `snip [append] [shift]`: 框选识别 (`append`: 框选追加截图), dragging from a quarter to
+   * three quarters of the picker that opens first, with Shift held on release if asked
+   * (the question box). Global shortcuts can't be pressed, so it goes through triggerAction
+   */
+  async snip(arg) {
+    need()
+    const action = arg.includes('append') ? 'snipAppendScreenshot' : 'snipScreenshot'
+    const shift = arg.includes('shift')
+    const before = new Set(app.windows())
+    if (!(await page.evaluate((n) => window.api.triggerAction(n), action))) {
+      return `refused ${action}`
+    }
+    let picker = null
+    const deadline = Date.now() + 15_000
+    while (!picker && Date.now() < deadline) {
+      picker = app.windows().find((w) => !before.has(w) && w.url().includes('picker.html'))
+      if (!picker) await sleep(200)
+    }
+    if (!picker) return 'no picker window appeared'
+    await picker.waitForFunction(() => document.querySelector('img')?.complete, null, {
+      timeout: 10_000
+    })
+    const { w, h, hint } = await picker.evaluate(() => ({
+      w: innerWidth,
+      h: innerHeight,
+      hint: document.body.innerText.replace(/\s+/g, ' ').trim()
+    }))
+    await picker.mouse.move(w * 0.25, h * 0.25)
+    await picker.mouse.down()
+    await picker.mouse.move(w * 0.5, h * 0.5, { steps: 5 })
+    if (shift) await picker.keyboard.down('Shift')
+    await picker.mouse.move(w * 0.75, h * 0.75, { steps: 5 })
+    // The picker closes on release, so nothing after it may wait on that window
+    await picker.mouse.up().catch(() => {})
+    if (shift) await picker.keyboard.up('Shift').catch(() => {})
+    return `dragged in ${action}${shift ? ' with Shift held' : ''}; picker said: ${hint}`
+  },
+
+  /** The main window as main sees it: shown, focused, bounds (soft-hide parks it off-screen) */
+  async winstate() {
+    need()
+    return JSON.stringify(
+      await app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows().find(
+          (b) =>
+            b.webContents.getURL().includes('index.html') &&
+            !b.webContents.getURL().includes('toolbar')
+        )
+        return w && { visible: w.isVisible(), focused: w.isFocused(), ...w.getBounds() }
+      })
+    )
+  },
+
   /** `toolbar [name]`: the overlay toolbar window's bounds and buttons, screenshot -> `<name>.png` */
   async toolbar(name) {
     need()

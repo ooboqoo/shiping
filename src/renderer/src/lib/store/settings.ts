@@ -181,6 +181,9 @@ export const CAPTURE_SCREEN_CURSOR = 'cursor'
 /** How captured screenshots are shown on the main page, ordered by how much room they take */
 export type ScreenshotDisplay = 'none' | 'count' | 'gallery'
 
+/** 「框选后」: send the screenshot at once, or ask a question first; Shift + release does the other */
+export type SnipMode = 'send' | 'ask'
+
 /** What to do when a saved code file would collide with an existing one */
 export type CodeNamingMode = 'sequence' | 'overwrite'
 
@@ -298,6 +301,8 @@ interface Settings {
   captureScreen: string
   /** 只截取某块屏幕上的这块区域；为 null 时截取整个屏幕 */
   captureRegion: CaptureRegion | null
+  /** What releasing a 框选 drag does: send at once, or ask a question first */
+  snipMode: SnipMode
 
   screenshotAutoSave: boolean
   screenshotDir: string
@@ -448,6 +453,7 @@ const defaultSettings: Settings = {
   screenshotDisplay: 'gallery',
   captureScreen: CAPTURE_SCREEN_CURSOR,
   captureRegion: null,
+  snipMode: 'send',
 
   screenshotAutoSave: false,
   screenshotDir: '',

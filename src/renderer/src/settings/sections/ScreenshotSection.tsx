@@ -8,7 +8,12 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { useSettingsStore, type CodeNamingMode, type ScreenshotDisplay } from '@/lib/store/settings'
+import {
+  useSettingsStore,
+  type CodeNamingMode,
+  type ScreenshotDisplay,
+  type SnipMode
+} from '@/lib/store/settings'
 import { CaptureTargetFields } from '../CaptureTargetFields'
 import { KnowledgeField } from '../KnowledgeField'
 import { ModeProfileSelect } from '../ModeProfileSelect'
@@ -24,6 +29,7 @@ export function ScreenshotSection({
 }) {
   const {
     screenshotDisplay,
+    snipMode,
     screenshotAutoSave,
     screenshotDir,
     codeAutoSave,
@@ -66,6 +72,24 @@ export function ScreenshotSection({
                 <SelectItem value="none">不展示</SelectItem>
                 <SelectItem value="count">卡片显示截图数量</SelectItem>
                 <SelectItem value="gallery">显示全部缩略图（默认）</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field
+            label="框选后"
+            note="框选识别和框选追加截图松开鼠标后做什么；按住 Shift 松开，这一次换成另一种。先输入问题时要打字，输入法的候选框不属于本工具的窗口，共享屏幕时可能被看到"
+          >
+            <Select
+              value={snipMode}
+              onValueChange={(val) => updateSetting('snipMode', val as SnipMode)}
+            >
+              <SelectTrigger className="w-60 shrink-0 bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="send">直接发送（默认）</SelectItem>
+                <SelectItem value="ask">先输入问题</SelectItem>
               </SelectContent>
             </Select>
           </Field>

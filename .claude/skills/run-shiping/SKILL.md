@@ -90,25 +90,27 @@ curl -s localhost:47123/quit
 Screenshots land in `$TMPDIR/run-shiping/shots/` (`SCREENSHOT_DIR` overrides); the
 app's stdout/stderr in `$TMPDIR/run-shiping/app.log`. Open the screenshots and look.
 
-| command (`curl -s 'localhost:47123/<cmd>?a=<arg>'`) | what it does                                                                          |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `ping`                                              | `pong` once the driver is listening                                                   |
-| `launch[?a=<.env block>]`                           | start the app on a fresh userData dir                                                 |
-| `ss?a=<name>`                                       | screenshot of the main window -> `<name>.png`                                         |
-| `problem` / `closeproblem`                          | cover the screen under the cursor with a 两数之和 problem / remove it                 |
-| `action?a=<name>`                                   | run a shortcut action: `takeScreenshot`, `appendScreenshot`, `stopSolutionStream`, …  |
-| `toolbar?a=<name>`                                  | the overlay toolbar's bounds, visibility and button count; screenshot -> `<name>.png` |
-| `followup?a=<question>`                             | 追问 in the current 截图模式 conversation                                             |
-| `state`                                             | 截图模式: 思考过程 blocks, loading flag, end of the answer                            |
-| `watch?a=<seconds>`                                 | follow an answer until it settles, screenshotting block changes                       |
-| `goto?a=<hash>`                                     | navigate: `#/`, `#/conversation`, `#/settings?tab=voice`, …                           |
-| `dashscope`                                         | type `DASHSCOPE_API_KEY` (env, else `.env`) into 设置 → 语音, open 对话模式           |
-| `say?a=<text>`                                      | speak through the speakers (`SAY_VOICE`, default Tingting)                            |
-| `hints` / `waithints?a=<seconds>`                   | 对话模式 cards (meta, busy, reasoning, text) / wait until all finished                |
-| `click-text?a=<text>`                               | click a button, link or summary by its text                                           |
-| `eval?a=<js>` / `text[?a=<css>]`                    | evaluate in the page / print innerText                                                |
-| `windows`                                           | URLs of the app's windows                                                             |
-| `quit`                                              | close the app, delete its userData, stop the driver                                   |
+| command (`curl -s 'localhost:47123/<cmd>?a=<arg>'`) | what it does                                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `ping`                                              | `pong` once the driver is listening                                                       |
+| `launch[?a=<.env block>]`                           | start the app on a fresh userData dir                                                     |
+| `ss?a=<name>`                                       | screenshot of the main window -> `<name>.png`                                             |
+| `problem` / `closeproblem`                          | cover the screen under the cursor with a 两数之和 problem / remove it                     |
+| `action?a=<name>`                                   | run a shortcut action: `takeScreenshot`, `appendScreenshot`, `stopSolutionStream`, …      |
+| `snip?a=[append][+shift]`                           | 框选识别 / 框选追加截图: drag in the picker, Shift held on release opens the question box |
+| `winstate`                                          | the main window as main sees it: visible, focused, bounds                                 |
+| `toolbar?a=<name>`                                  | the overlay toolbar's bounds, visibility and button count; screenshot -> `<name>.png`     |
+| `followup?a=<question>`                             | 追问 in the current 截图模式 conversation                                                 |
+| `state`                                             | 截图模式: 思考过程 blocks, loading flag, end of the answer                                |
+| `watch?a=<seconds>`                                 | follow an answer until it settles, screenshotting block changes                           |
+| `goto?a=<hash>`                                     | navigate: `#/`, `#/conversation`, `#/settings?tab=voice`, …                               |
+| `dashscope`                                         | type `DASHSCOPE_API_KEY` (env, else `.env`) into 设置 → 语音, open 对话模式               |
+| `say?a=<text>`                                      | speak through the speakers (`SAY_VOICE`, default Tingting)                                |
+| `hints` / `waithints?a=<seconds>`                   | 对话模式 cards (meta, busy, reasoning, text) / wait until all finished                    |
+| `click-text?a=<text>`                               | click a button, link or summary by its text                                               |
+| `eval?a=<js>` / `text[?a=<css>]`                    | evaluate in the page / print innerText                                                    |
+| `windows`                                           | URLs of the app's windows                                                                 |
+| `quit`                                              | close the app, delete its userData, stop the driver                                       |
 
 Pass Chinese or spaces with `--get --data-urlencode 'a=…'`.
 

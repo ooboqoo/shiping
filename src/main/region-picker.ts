@@ -13,7 +13,7 @@ import {
 /**
  * `region`: the area every later screenshot is cropped to, confirmed with
  * Enter / double-click. `screenshot`: one screenshot of the area, taken the
- * moment the drag ends.
+ * moment the drag ends (and either sent or held for a question, see `askFirst`).
  */
 export type PickerPurpose = 'region' | 'screenshot'
 
@@ -22,6 +22,11 @@ export interface RegionPickerData {
   purpose: PickerPurpose
   /** A one-off screenshot added to the current conversation instead of starting one */
   append: boolean
+  /**
+   * A one-off screenshot waits for a question unless Shift is held on release
+   * (「框选后」 set to 先输入问题); false: it is sent unless Shift is held
+   */
+  askFirst: boolean
   /** JPEG data URL of the screen as it was when picking started */
   image: string
   /** The saved region, when it is on this screen */
@@ -42,6 +47,15 @@ interface Picker {
 interface Picked {
   region: CaptureRegion
   picker: Picker
+  /** Shift was held as the drag ended: the other of the two 「框选后」 behaviours */
+  shift: boolean
+}
+
+/** A one-off screenshot, and whether the user wants to ask about it first */
+export interface PickedScreenshot {
+  /** base64 PNG */
+  image: string
+  ask: boolean
 }
 
 /** Above the main window (100) and the toolbar (101) at the same `screen-saver` level */
@@ -59,6 +73,7 @@ let active = false
 let pickers: Picker[] = []
 let purpose: PickerPurpose = 'region'
 let appending = false
+let asking = false
 let savedRegion: CaptureRegion | null = null
 let settle: ((picked: Picked | null) => void) | null = null
 let timeout: NodeJS.Timeout | null = null
@@ -78,11 +93,18 @@ export async function pickCaptureRegion(
  * capture region as it is. The screenshot is cut from the frozen screen the
  * user dragged on, so it holds exactly what they saw, even a menu or tooltip
  * that closed when the picker took focus. `append` only changes what the page
- * says the screenshot is for. Resolves with base64 PNG, or null if cancelled.
+ * says the screenshot is for. `askFirst`: release asks for a question first
+ * and Shift + release sends, else the other way round (「框选后」). Resolves
+ * with the screenshot, or null if cancelled.
  */
-export async function pickScreenshot({ append = false } = {}): Promise<string | null> {
-  const picked = await pick('screenshot', null, append)
-  return picked && cropScreenshot(picked.picker.capture, picked.picker.display, picked.region)
+export async function pickScreenshot({
+  append = false,
+  askFirst = false
+} = {}): Promise<PickedScreenshot | null> {
+  const picked = await pick('screenshot', null, append, askFirst)
+  if (!picked) return null
+  const image = cropScreenshot(picked.picker.capture, picked.picker.display, picked.region)
+  return { image, ask: picked.shift !== askFirst }
 }
 
 /**
@@ -93,7 +115,8 @@ export async function pickScreenshot({ append = false } = {}): Promise<string | 
 async function pick(
   as: PickerPurpose,
   current: CaptureRegion | null,
-  append = false
+  append = false,
+  askFirst = false
 ): Promise<Picked | null> {
   if (active) return null
   active = true
@@ -116,6 +139,7 @@ async function pick(
     settle = resolve
     purpose = as
     appending = append
+    asking = askFirst
     savedRegion = current
     pickers = displays.flatMap((display) => {
       const source = findScreenSource(sources, display)
@@ -220,6 +244,7 @@ ipcMain.handle('getRegionPickerData', (event): RegionPickerData | null => {
   return {
     purpose,
     append: appending,
+    askFirst: asking,
     image: picker.image,
     region: savedRegion?.displayId === displayId ? savedRegion : null,
     ...settingsResolution(picker.display)
@@ -256,10 +281,14 @@ function isRegionRect(rect: RegionRect | null): rect is RegionRect {
   )
 }
 
-ipcMain.on('finish-region-picker', (event, rect: RegionRect | null) => {
+ipcMain.on('finish-region-picker', (event, rect: RegionRect | null, shift?: boolean) => {
   const picker = pickerOf(event.sender)
   if (!picker) return
   if (!isRegionRect(rect)) return finish(null)
   const { x, y, width, height } = rect
-  finish({ region: { displayId: String(picker.display.id), x, y, width, height }, picker })
+  finish({
+    region: { displayId: String(picker.display.id), x, y, width, height },
+    picker,
+    shift: shift === true
+  })
 })

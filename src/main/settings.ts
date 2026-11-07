@@ -186,6 +186,8 @@ export const settings = {
   captureScreen: 'cursor',
   /** Crop every screenshot to this area of one screen; null captures the whole screen */
   captureRegion: null as CaptureRegion | null,
+  /** 「框选后」: send the screenshot at once, or ask a question first; Shift + release does the other */
+  snipMode: 'send' as 'send' | 'ask',
   screenshotAutoSave: false,
   screenshotDir: '',
   /** Save the code block of a finished answer as a source file */
