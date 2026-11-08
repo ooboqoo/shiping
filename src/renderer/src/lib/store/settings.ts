@@ -22,6 +22,7 @@ import {
   type ReasoningEffort
 } from '../../../../shared/api-profile'
 import type { HintMode } from '../../../../shared/conversation'
+import { normalizeSummarySettings } from '../../../../shared/conversation-summary'
 import { DEFAULT_PROXY, normalizeProxySettings, type ProxySettings } from '../../../../shared/proxy'
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE,
@@ -342,7 +343,12 @@ interface Settings {
   /** The mode shown last, restored on the next start */
   lastMode: AppMode
   /** 对话模式: hint as soon as the other side finishes a sentence, or only on the shortcut */
+  conversationSummaryEnabled: boolean
+  conversationSummaryRounds: number
+  conversationSummaryBudget: number
   conversationHintMode: HintMode
+  conversationAudioMode: import('../../../../shared/conversation').ConversationAudioMode
+  conversationMicrophoneDeviceId: string
   /** 对话模式: silence (ms) after which the recogniser ends a sentence; shorter hints sooner */
   conversationSilenceMs: number
   /** 对话模式: a finished sentence shorter than this (punctuation aside) triggers no automatic hint */
@@ -481,6 +487,11 @@ const defaultSettings: Settings = {
 
   lastMode: 'screenshot',
   conversationHintMode: 'auto',
+  conversationSummaryEnabled: false,
+  conversationSummaryRounds: 3,
+  conversationSummaryBudget: 1000,
+  conversationAudioMode: 'system',
+  conversationMicrophoneDeviceId: '',
   conversationSilenceMs: 800,
   conversationMinChars: 4,
   conversationTranscriptHidden: false,
@@ -860,6 +871,14 @@ export const useSettingsStore = create<SettingsStore>()(
         } catch {
           state.networkProxy = { ...DEFAULT_PROXY }
         }
+        const summary = normalizeSummarySettings({
+          enabled: state.conversationSummaryEnabled,
+          rounds: state.conversationSummaryRounds,
+          budget: state.conversationSummaryBudget
+        })
+        state.conversationSummaryEnabled = summary.enabled
+        state.conversationSummaryRounds = summary.rounds
+        state.conversationSummaryBudget = summary.budget
         state.externalKnowledge = normalizeExternalKnowledge(state.externalKnowledge)
         state.toolbarButtons = normalizeToolbarButtons(state.toolbarButtons)
         // Rebuild the presets on every load, so ones added in a later version

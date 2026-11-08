@@ -1,5 +1,8 @@
-import { FileText, Lightbulb, MessagesSquare, TriangleAlert } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { FileText, Lightbulb, MessagesSquare, TriangleAlert, Mic } from 'lucide-react'
+import type { ConversationAudioMode } from '../../../../shared/conversation'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -35,6 +38,11 @@ export function ConversationSection({
   const {
     dashscopeApiKey,
     conversationHintMode,
+    conversationSummaryEnabled,
+    conversationSummaryRounds,
+    conversationSummaryBudget,
+    conversationAudioMode,
+    conversationMicrophoneDeviceId,
     conversationSilenceMs,
     conversationMinChars,
     conversationTranscriptHidden,
@@ -42,6 +50,15 @@ export function ConversationSection({
     conversationSaveDir,
     updateSetting
   } = useSettingsStore()
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([])
+  useEffect(() => {
+    if (conversationAudioMode === 'system') return
+    // Enumerating does not request microphone permission; starting own speech does.
+    void navigator.mediaDevices.enumerateDevices().then(
+      (devices) => setMicrophones(devices.filter((d) => d.kind === 'audioinput')),
+      () => setMicrophones([])
+    )
+  }, [conversationAudioMode])
 
   return (
     <>
@@ -63,6 +80,64 @@ export function ConversationSection({
           <ModeProfileSelect mode="conversation" onEdit={onEditProfile} />
           <SceneEditor mode="conversation" />
           <KnowledgeField mode="conversation" onOpen={onOpenKnowledge} />
+        </div>
+      </SettingsCard>
+
+      <SettingsCard Icon={Mic} title="对话音源">
+        <div className="space-y-4">
+          <Field
+            label="录音来源"
+            note="默认只听「设置 → 语音」所选的对方音源。双路录音额外识别自己的回答，会增加语音识别费用；自己的回答不会触发或打断提示。重新开始监听后生效"
+          >
+            <Select
+              value={conversationAudioMode}
+              onValueChange={(val) =>
+                updateSetting('conversationAudioMode', val as ConversationAudioMode)
+              }
+            >
+              <SelectTrigger className="w-60 shrink-0 bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">仅对方音源（默认）</SelectItem>
+                <SelectItem value="dual">对方音源 + 自己的麦克风</SelectItem>
+                <SelectItem value="microphone">仅自己的麦克风（记录回答）</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          {conversationAudioMode !== 'system' && (
+            <Field
+              label="自己的麦克风"
+              note="与对方音源分别选择。建议佩戴耳机，扬声器回声可能被当成自己的回答；仅记录自己时不会自动出提示。"
+            >
+              <Select
+                value={conversationMicrophoneDeviceId || 'default'}
+                onValueChange={(val) =>
+                  updateSetting('conversationMicrophoneDeviceId', val === 'default' ? '' : val)
+                }
+              >
+                <SelectTrigger className="w-60 shrink-0 bg-white">
+                  <SelectValue placeholder="系统默认麦克风" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">系统默认麦克风</SelectItem>
+                  {microphones
+                    .filter((d) => d.deviceId && d.deviceId !== 'default')
+                    .map((d) => (
+                      <SelectItem key={d.deviceId} value={d.deviceId}>
+                        {d.label || d.deviceId}
+                      </SelectItem>
+                    ))}
+                  {conversationMicrophoneDeviceId &&
+                    !microphones.some((d) => d.deviceId === conversationMicrophoneDeviceId) && (
+                      <SelectItem value={conversationMicrophoneDeviceId}>
+                        {conversationMicrophoneDeviceId}（已保存）
+                      </SelectItem>
+                    )}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
         </div>
       </SettingsCard>
 
@@ -140,6 +215,70 @@ export function ConversationSection({
               </Select>
             </Field>
           </Advanced>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard Icon={MessagesSquare} title="补充问答摘要">
+        <div className="space-y-4">
+          <Field
+            label="附带最近问答的摘要"
+            note="默认关闭。开启后，空闲时使用对话模式的 AI 配置额外生成摘要，会产生后台调用费用。新问题直接出提示，不等待摘要；关闭后仍保留原有对话原文、最近提示和滚动备忘。"
+          >
+            <Switch
+              className="scale-y-90"
+              checked={conversationSummaryEnabled}
+              onCheckedChange={(checked) => updateSetting('conversationSummaryEnabled', checked)}
+            />
+          </Field>
+          {conversationSummaryEnabled && (
+            <>
+              <Field
+                label="最近问答轮数"
+                note="1–20 轮，默认 3 轮；只附带已生成的摘要。重写同一条提示仍算同一轮。"
+              >
+                <Select
+                  value={String(conversationSummaryRounds)}
+                  onValueChange={(value) =>
+                    updateSetting('conversationSummaryRounds', Number(value))
+                  }
+                >
+                  <SelectTrigger className="w-32 shrink-0 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
+                      <SelectItem key={n} value={String(n)}>
+                        {n} 轮
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field
+                label="补充摘要预算"
+                note="100–4000 个估算 token，默认 1000；只限制新增摘要，不会缩短当前问题、原文或重写时的上一版提示。与滚动备忘和最近提示可能有内容重复。"
+              >
+                <Input
+                  className="w-32 shrink-0 bg-white"
+                  type="number"
+                  min={100}
+                  max={4000}
+                  step={100}
+                  key={conversationSummaryBudget}
+                  defaultValue={conversationSummaryBudget}
+                  onBlur={(event) => {
+                    const budget = Math.min(
+                      4000,
+                      Math.max(100, Math.round(Number(event.target.value) || 100))
+                    )
+                    event.target.value = String(budget)
+                    updateSetting('conversationSummaryBudget', budget)
+                  }}
+                  aria-label="补充摘要预算（估算 token）"
+                />
+              </Field>
+            </>
+          )}
         </div>
       </SettingsCard>
 

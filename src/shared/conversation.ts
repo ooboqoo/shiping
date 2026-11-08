@@ -5,11 +5,17 @@
 /** `auto` asks for a hint as soon as the other side finishes a sentence; `manual` waits for the shortcut */
 export type HintMode = 'auto' | 'manual'
 
+/** Logical speaker: a selected virtual input still belongs to the other side. */
+export type AudioSource = 'system' | 'microphone'
+export type ConversationAudioMode = AudioSource | 'dual'
+
 /** One sentence of the other side, as the speech recogniser reports it */
 export interface Utterance {
   /** Increasing from 1 within a conversation */
   id: number
   text: string
+  /** Absent on legacy records: the other side. */
+  source?: AudioSource
   /** False while the recogniser is still revising it */
   final: boolean
 }
@@ -36,6 +42,7 @@ export interface HintCard {
   error?: string
   /** From the request to the first chunk, in ms; absent until the first chunk */
   latencyMs?: number
+  contextUsage?: ConversationContextUsage
 }
 
 export interface ConversationSnapshot {
@@ -65,4 +72,15 @@ const QUESTION_WORDS =
  */
 export function looksLikeQuestion(text: string): boolean {
   return QUESTION_END.test(text) || QUESTION_WORDS.test(text)
+}
+
+/** Measurements of the assembled user message, excluding system prompt/RAG/provider overhead. */
+export interface ConversationContextUsage {
+  rawUtterances: number
+  summaryRounds: number[]
+  summaryTokens: number
+  historyChars: number
+  historyTokens: number
+  textChars: number
+  estimatedTokens: number
 }

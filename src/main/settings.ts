@@ -9,6 +9,7 @@ import {
   type ReasoningEffort
 } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
+import { normalizeSummarySettings } from '../shared/conversation-summary'
 import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 import { createToolbarButtons } from '../shared/toolbar'
 import { DEFAULT_PROXY, normalizeProxySettings } from '../shared/proxy'
@@ -44,6 +45,17 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
       ..._settings,
       externalKnowledge: normalizeExternalKnowledge(_settings.externalKnowledge)
     }
+  }
+  const summary = normalizeSummarySettings({
+    enabled: _settings.conversationSummaryEnabled ?? settings.conversationSummaryEnabled,
+    rounds: _settings.conversationSummaryRounds ?? settings.conversationSummaryRounds,
+    budget: _settings.conversationSummaryBudget ?? settings.conversationSummaryBudget
+  })
+  _settings = {
+    ..._settings,
+    conversationSummaryEnabled: summary.enabled,
+    conversationSummaryRounds: summary.rounds,
+    conversationSummaryBudget: summary.budget
   }
   const previous = { ...settings }
   Object.assign(settings, _settings)
@@ -162,6 +174,12 @@ export const settings = {
   conversationPrompt: '',
   /** 对话模式: hint on every finished sentence (`auto`) or only on the shortcut */
   conversationHintMode: 'auto' as HintMode,
+  conversationSummaryEnabled: false,
+  conversationSummaryRounds: 3,
+  conversationSummaryBudget: 1000,
+  /** Optional own speech capture. Existing selected input stays the other side. */
+  conversationAudioMode: 'system' as import('../shared/conversation').ConversationAudioMode,
+  conversationMicrophoneDeviceId: '',
   /** 对话模式: silence (ms) that ends a sentence in the recogniser */
   conversationSilenceMs: 800,
   /** 对话模式: a finished sentence shorter than this triggers no automatic hint */
