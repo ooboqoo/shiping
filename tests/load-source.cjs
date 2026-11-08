@@ -20,7 +20,7 @@ module.exports = function loadSource(file, mocks = {}, cache = new Map()) {
     if (Object.hasOwn(mocks, id)) return mocks[id]
     if (id.startsWith('.')) {
       const target = path.resolve(path.dirname(file), id.replace(/\?raw$/, ''))
-      if (id.endsWith('?raw')) return { default: fs.readFileSync(target, 'utf8') }
+      if (id.endsWith('?raw')) return { __esModule: true, default: fs.readFileSync(target, 'utf8') }
       const resolved = [target, target + '.ts', target + '.tsx'].find(
         (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile()
       )

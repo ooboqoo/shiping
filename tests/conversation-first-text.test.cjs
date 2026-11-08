@@ -493,3 +493,107 @@ test('manual hints on unfinished speech use the latest revision as the timing ba
   assert.equal(h.snapshot().hints[0].latencyMs, 200)
   assert.equal(h.snapshot().hints[0].speechLatencyMs, 400)
 })
+
+test('Markdown-only prefixes stay untimed until cumulative answer content arrives', (t) => {
+  const { hasAnswerText } = loadSource('src/shared/conversation.ts')
+  for (const text of [
+    '```typescript\n',
+    '~~~python\n',
+    '$$',
+    '$$\n$$',
+    '1. ',
+    '23) ',
+    '# ',
+    '### ',
+    '> - ',
+    '- [ ] '
+  ]) {
+    assert.equal(hasAnswerText(text), false, JSON.stringify(text))
+  }
+  for (const text of [
+    '123',
+    '1.5',
+    '$$x + 1$$',
+    '```typescript\nconst n = 1',
+    '```js\n}',
+    '🙂',
+    '1. 结论',
+    '# 标题'
+  ]) {
+    assert.equal(hasAnswerText(text), true, JSON.stringify(text))
+  }
+  const h = mainHarness(t)
+  h.sentence('解释一下缓存', true)
+  h.at(1100)
+  h.requests[0].onChunk({ kind: 'text', delta: '``' })
+  h.at(1200)
+  h.requests[0].onChunk({ kind: 'text', delta: '`type' })
+  h.at(1300)
+  h.requests[0].onChunk({ kind: 'text', delta: 'script\n' })
+  assert.equal(h.snapshot().hints[0].firstTextAt, undefined)
+  h.at(1600)
+  h.requests[0].onChunk({ kind: 'text', delta: 'const n = 1' })
+  assert.equal(h.snapshot().hints[0].firstTextAt, 1600)
+  assert.equal(h.snapshot().hints[0].latencyMs, 600)
+})
+
+test('renderer uses the cumulative fenced answer even when the prefix was flushed earlier', (t) => {
+  const h = rendererHarness(t)
+  h.callbacks.onConversationHintChunk(1, '``')
+  h.flush()
+  h.callbacks.onConversationHintChunk(1, '`typescript\n')
+  assert.equal(
+    h.state().hints[0].text,
+    '``',
+    'a fence info string should remain in the frame batch'
+  )
+  h.flush()
+  h.callbacks.onConversationHintChunk(1, 'const n = 1')
+  assert.equal(
+    h.state().hints[0].text,
+    '```typescript\nconst n = 1',
+    'the first code body is immediate'
+  )
+})
+
+test('first-text classification agrees with Markdown rendering for empty prefixes and answer bodies', async () => {
+  const React = require('react')
+  const { renderToStaticMarkup } = require('react-dom/server')
+  const [
+    { default: Markdown },
+    { default: remarkGfm },
+    { default: remarkMath },
+    { default: rehypeKatex }
+  ] = await Promise.all([
+    import('react-markdown'),
+    import('remark-gfm'),
+    import('remark-math'),
+    import('rehype-katex')
+  ])
+  const { hasAnswerText } = loadSource('src/shared/conversation.ts')
+  for (const [markdown, expected] of [
+    ['```typescript\n', false],
+    ['~~~python\n', false],
+    ['$$', false],
+    ['1. ', false],
+    ['# ', false],
+    ['```typescript\nconst n = 1', true],
+    ['123', true],
+    ['$$x+1$$', true],
+    ['🙂', true]
+  ]) {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        Markdown,
+        {
+          remarkPlugins: [remarkGfm, remarkMath],
+          rehypePlugins: [rehypeKatex]
+        },
+        markdown
+      )
+    )
+    const visible = html.replace(/<[^>]*>/g, '').trim()
+    assert.equal(Boolean(visible), expected, `renderer: ${JSON.stringify(markdown)}`)
+    assert.equal(hasAnswerText(markdown), expected, `timing: ${JSON.stringify(markdown)}`)
+  }
+})

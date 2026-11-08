@@ -65,9 +65,34 @@ export function countMeaningfulChars(text: string): number {
   return text.replace(/[\s\p{P}\p{S}]/gu, '').length
 }
 
-/** Answer content, including symbols such as emoji, but not Markdown-only prefixes */
+/** Inspect the cumulative answer: streaming fence info may span several deltas. */
 export function hasAnswerText(text: string): boolean {
-  return /[\p{L}\p{N}\p{S}]/u.test(text.replace(/[`*~_#>|\\\-=]/g, ''))
+  let fence: { marker: string; length: number } | undefined
+  for (let line of text.split(/\r?\n/)) {
+    if (fence) {
+      const closing = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)
+      if (closing && closing[1][0] === fence.marker && closing[1].length >= fence.length) {
+        fence = undefined
+        continue
+      }
+      // Code punctuation is itself visible content, unlike Markdown markers.
+      if (line.trim()) return true
+      continue
+    }
+    line = line
+      .replace(/^(?: {0,3}>[ \t]?)+/, '')
+      .replace(/^(?:[ \t]*(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$))+/, '')
+      .replace(/^\[[ xX]\](?:[ \t]+|$)/, '')
+      .replace(/^ {0,3}#{1,6}(?:[ \t]+|$)/, '')
+    const opening = line.match(/^ {0,3}(`{3,}|~{3,})/)
+    if (opening) {
+      fence = { marker: opening[1][0], length: opening[1].length }
+      continue
+    }
+    const content = line.replace(/\${1,2}|\\[()[\]]/g, '').replace(/[`*~_#>|\\\-=]/g, '')
+    if (/[\p{L}\p{N}\p{S}]/u.test(content)) return true
+  }
+  return false
 }
 
 /** Ends like a question: a question mark, or a closing particle */

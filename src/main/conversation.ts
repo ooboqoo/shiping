@@ -619,7 +619,7 @@ async function startHint(
         return
       }
       if (!chunk.delta) return
-      if (card.firstTextAt === undefined && hasAnswerText(chunk.delta)) {
+      if (card.firstTextAt === undefined && hasAnswerText(card.text + chunk.delta)) {
         card.firstTextAt = Date.now()
         card.latencyMs = Math.max(0, card.firstTextAt - requestedAt)
         card.speechLatencyMs = Math.max(

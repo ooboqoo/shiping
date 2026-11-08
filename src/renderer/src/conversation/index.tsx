@@ -74,7 +74,7 @@ function useConversationEvents() {
       const card = useConversationStore.getState().hints.find((hint) => hint.id === id)
       if (!card || card.status !== 'streaming') return
       pendingChunks.current.set(id, (pendingChunks.current.get(id) ?? '') + chunk)
-      if (!hasAnswerText(card.text) && hasAnswerText(pendingChunks.current.get(id)!)) {
+      if (!hasAnswerText(card.text) && hasAnswerText(card.text + pendingChunks.current.get(id)!)) {
         // The opening answer should reach React without waiting for another
         // animation frame; later deltas still share the normal frame batch.
         useConversationStore
