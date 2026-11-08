@@ -104,6 +104,7 @@ src/
         │   ├── index.tsx     # Layout + snapshot / event sync with main's conversation
         │   ├── TranscriptPanel.tsx # The other side's sentences; a hovered hint highlights its own
         │   ├── HintPanel.tsx       # Hint cards + empty states
+        │   ├── hint-visibility.ts  # First visible-frame acknowledgement, clipped viewport + document visibility
         │   ├── ConversationStatusBar.tsx # Listening, 自动/手动, hint / stop buttons with shortcuts
         │   └── listening.ts  # Start / stop recognition (`purpose: 'conversation'`), toggle hint mode
         ├── settings/         # Settings page: left nav, one group at a time (`?tab=`)
@@ -164,7 +165,8 @@ src/
             └── main.css      # Tailwind + typography plugin + theme variables (oklch)
 
 tests/                       # `npm test` (node:test) and `npm run test:proxy` (real Electron network stack); not shipped in the app
-├── load-source.cjs          # Runs checked-in TS by transpiling it with `typescript`, with per-test mocks for imports
+├── load-source.cjs          # Runs checked-in TS/TSX with per-test mocks, JSX and ?raw support
+├── conversation-first-text.test.cjs # First text delivery, timing, visibility and stale-request guards
 ├── proxy.test.cjs           # Unit tests: proxy settings, transport wiring, error messages, settings store
 ├── external-knowledge.test.cjs # Unit tests: 外部知识库 request / response handling, failures, where the passages go
 └── electron-proxy.cjs       # Started by run-electron.cjs: local HTTP / SOCKS5 proxies against real sessions
@@ -242,6 +244,7 @@ relay/                       # 手机同步's relay + phone page: its own packag
 - `window-resize-start` / `window-resize-stop` (`send`, not `invoke`) — begin/end a cursor-tracked window resize, or a move (`'move'`, the 极简悬浮条's grip)
 - `start-transcription` / `stop-transcription` — speech transcription lifecycle; start takes `{ purpose, maxSentenceSilence }`
 - `conversation:get-snapshot` / `conversation:request-hint` / `conversation:stop-hints` / `conversation:clear` — 对话模式
+- `conversation:first-visible` — `(id, requestedAt, requestId)`: the main renderer acknowledges an answer after a paint opportunity; main validates sender, finite numbers, the current generation and meaningful text, accepting once per request
 - `get-transcription-text` / `clear-transcription-text` — read/clear accumulated text
 - `update:get-status` / `update:download` / `update:install` — a newer release; the last two are Windows only
 - `knowledge:list` / `knowledge:get-text` / `knowledge:pick-files` / `knowledge:import-files` / `knowledge:create` / `knowledge:update` / `knowledge:reimport` / `knowledge:remove` — 资料库; imports and reimports return their failures as values, not rejections
@@ -397,6 +400,8 @@ For use with 手机同步: the answer is read on the phone, so the desktop keeps
 - It is meant for system audio: in an online call that is only the other side, so a finished sentence can trigger a hint without speaker detection
 - Automatic (`conversationHintMode: 'auto'`): a finished sentence with at least `conversationMinChars` meaningful characters (a question, `looksLikeQuestion()` in `src/shared/conversation.ts`, needs only 2) asks for a hint at once, covering every sentence since the last hint. If the other side keeps talking (a new sentence reaches the minimum while the automatic hint streams) the hint is withdrawn (`waiting`) and rewritten into the same card when they finish — or when that sentence comes to nothing, or listening stops
 - Shortcut / button (`generateHint`, either mode): brings the card being written or waiting up to date, else opens one for everything not yet hinted (a sentence still being spoken included), else rewrites the last hint with 「换一个角度」
+- First text timing: `HintCard.requestedAt` / `firstTextAt` use main's clock; `latencyMs` excludes reasoning, whitespace and Markdown-only prefixes. `speechLatencyMs` starts at the last focused sentence's `finalAt`, or latest `updatedAt` if it is still open (recogniser receipt, not acoustic speech end). `requestId` reuses the non-reset generation counter, keeping same-millisecond rewrites and cleared/reused card ids distinct. Withdrawal/rewrite resets all measured fields
+- The first meaningful answer delta reaches the renderer store immediately; later chunks gather per animation frame. `hint-visibility.ts` checks the answer DOM against its scrolling panel, viewport and document visibility across two animation frames. The renderer reports `conversation:first-visible`; main stores request-to-acknowledgement `visibleLatencyMs`, including IPC. This is a visible-frame approximation, not proof of compositor presentation or human reading. Timing stays in inline protected DOM; never add native `title` tooltips
 - Several cards may stream at once. A card restarted by a newer request bumps its `generations` entry, so the stream it replaced never writes to it again
 - The hint panel scrolls each new card to its top and does not follow the stream. The newest card keeps a panel's height of room under it (`last:min-h-full`), else a short one stops at the bottom edge showing one line. A finished card that runs past the bottom pages down once by itself (`revealRest()`), unless the user scrolled since: paging by hand is easy to spot on a call
 - Early start (`scheduleEarlyHint()`): a sentence still being spoken that reads as a question and has not changed for `EARLY_IDLE` (350ms) gets its hint then, ahead of the recogniser's end of sentence (`conversationSilenceMs`). `earlyStarts` remembers its length: growing past it by more than a revision (`EARLY_SLACK`) withdraws the card like above, even a finished one, and a final text that says more rewrites it; otherwise the end of the sentence leaves it standing

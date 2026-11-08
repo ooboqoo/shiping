@@ -392,6 +392,13 @@ const api = {
   requestHint: () => ipcRenderer.invoke('conversation:request-hint'),
   stopHints: () => ipcRenderer.invoke('conversation:stop-hints'),
   clearConversation: () => ipcRenderer.invoke('conversation:clear'),
+  reportHintVisible: (id: number, requestedAt: number, requestId: number) =>
+    ipcRenderer.invoke(
+      'conversation:first-visible',
+      id,
+      requestedAt,
+      requestId
+    ) as Promise<boolean>,
   onConversationUtterance: (callback: (utterance: Utterance) => void) => {
     ipcRenderer.on('conversation-utterance', (_event, utterance: Utterance) => callback(utterance))
   },

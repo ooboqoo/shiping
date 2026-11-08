@@ -11,6 +11,7 @@ import { TranscriptPanel } from './TranscriptPanel'
 import { HintPanel } from './HintPanel'
 import { ConversationStatusBar } from './ConversationStatusBar'
 import { toggleHintMode, toggleListening } from './listening'
+import { hasAnswerText } from '../../../shared/conversation'
 
 /**
  * 对话模式: what the other side says on the left, the hints for it on the right.
@@ -70,7 +71,18 @@ function useConversationEvents() {
       store.upsertHint(card)
     })
     window.api.onConversationHintChunk((id, chunk) => {
+      const card = useConversationStore.getState().hints.find((hint) => hint.id === id)
+      if (!card || card.status !== 'streaming') return
       pendingChunks.current.set(id, (pendingChunks.current.get(id) ?? '') + chunk)
+      if (!hasAnswerText(card.text) && hasAnswerText(pendingChunks.current.get(id)!)) {
+        // The opening answer should reach React without waiting for another
+        // animation frame; later deltas still share the normal frame batch.
+        useConversationStore
+          .getState()
+          .appendHintText(new Map([[id, pendingChunks.current.get(id)!]]))
+        pendingChunks.current.delete(id)
+        return
+      }
       if (frameHandle.current === null) {
         frameHandle.current = window.requestAnimationFrame(flush)
       }

@@ -12,6 +12,9 @@ export interface Utterance {
   text: string
   /** False while the recogniser is still revising it */
   final: boolean
+  /** Main's receipt time of the latest revision and of the final sentence */
+  updatedAt?: number
+  finalAt?: number
 }
 
 export type HintStatus =
@@ -34,8 +37,17 @@ export interface HintCard {
   /** What the model reasoned before `text`; empty for non-thinking models */
   reasoning: string
   error?: string
-  /** From the request to the first chunk, in ms; absent until the first chunk */
+  /** Per-card generation, never reused after a rewrite or conversation clear */
+  requestId?: number
+  /** Main's clock, when this request began and its first meaningful answer arrived */
+  requestedAt?: number
+  firstTextAt?: number
+  /** Request to first meaningful answer text; reasoning and formatting do not count */
   latencyMs?: number
+  /** Last final/revised sentence receipt to first meaningful answer text */
+  speechLatencyMs?: number
+  /** Request to renderer's first visible-frame acknowledgement (including IPC) */
+  visibleLatencyMs?: number
 }
 
 export interface ConversationSnapshot {
@@ -51,6 +63,11 @@ export const NO_REPLY = '（无需回应）'
 /** Characters that carry meaning: punctuation and spaces do not count towards the minimum */
 export function countMeaningfulChars(text: string): number {
   return text.replace(/[\s\p{P}\p{S}]/gu, '').length
+}
+
+/** Answer content, including symbols such as emoji, but not Markdown-only prefixes */
+export function hasAnswerText(text: string): boolean {
+  return /[\p{L}\p{N}\p{S}]/u.test(text.replace(/[`*~_#>|\\\-=]/g, ''))
 }
 
 /** Ends like a question: a question mark, or a closing particle */
