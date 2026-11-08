@@ -391,6 +391,10 @@ For use with 手机同步: the answer is read on the phone, so the desktop keeps
 
 ### Conversation Mode (对话模式)
 
+- Optional source capture: `conversationAudioMode` defaults to `system`, with opt-in `dual` or `microphone`; `conversationMicrophoneDeviceId` defaults to `''` (own default microphone). The existing `audioInputDeviceId` is always the other party's source, including virtual audio cables, in both single and dual modes. Screenshot mode retains its selected-input → system fallback. Own microphone permission and its additional ASR fee are opt-in; device enumeration never opens a microphone.
+- `AudioSource` and `ConversationAudioMode` live in `shared/conversation.ts`; `Utterance.source` is optional for old records (`undefined` means the other party). `conversation.ts` revises each speaker's open sentence independently. Own speech is actual user speech in raw context and the rolling memo, never the current question, external retrieval query, automatic hint trigger or hint cancellation. Memo folding waits for older partial sentences. Stopping finishes all open sentences and resumes a waiting card through the latest open **system** sentence once, including after ASR final-drain events.
+- Desktop transcript, phone `renderSaid()` (`relay/public/app.js`) and Markdown records distinguish actual self speech. All-system records retain the original Markdown bytes and phone layout. `HintPanel`'s question and transcript highlight include only other-party sentences.
+
 `/conversation` turns what the other side of a call says into hints, without screenshots. Main owns the conversation (`src/main/conversation.ts`); the page shows a copy, fetched with `conversation:get-snapshot` on mount and kept current by events, so visiting the settings mid-call loses nothing:
 
 - Recognition runs with `purpose: 'conversation'` and `max_sentence_silence: conversationSilenceMs`; `transcription.ts` then hands every sentence revision to `conversation.ts` instead of accumulating 截图模式's text. Listening keeps running on the settings / help pages and stops when 截图模式's page mounts
@@ -438,6 +442,10 @@ For material too large to send whole, the user runs a retrieval service of their
 - Abort reason determines which IPC event to send (`solution-stopped` for user, silent for new-request)
 
 ### Real-time Speech Transcription
+
+- `transcription.ts` owns one WebSocket per logical source. `start-transcription` accepts optional `sources` alongside existing `purpose` / `maxSentenceSilence`; screenshot requests remain single-source. It resolves only after all ASR tasks start (8s timeout). `transcription-audio-chunk` accepts an optional source (default `system`). Starts/stops are serialized by lifecycle generation and a shared drain promise; stop accepts final events for up to 700ms, then releases all sockets. Closing a CONNECTING socket keeps a detached safe error handler. Existing `onTranscriptionStart`, `onTranscriptionError`, and `onTranscriptionEnd` hooks still drive mobile/prewarm/mini-bar state.
+- `renderer/src/lib/audio-capture.ts` captures each source separately with generation cancellation, rejects duplicate actual input devices, and feeds PCM through a zero-gain output graph (no audio monitoring). Partial startup failure releases every opened stream/context. `conversation/listening.ts` and `coder/index.tsx` distinguish capture failures (source-specific permission guidance) from ASR failures (the actual credential/network error). `App.tsx` owns stopped-event resource cleanup so it also runs on settings/help pages.
+- Regression tests: `audio-capture`, `transcription`, `conversation-audio`, `listening`, `coder-listening`, and `audio-records`; `tests/load-source.cjs` remains the shared loader with its original API plus `createLoader`, JSX, and raw-import support.
 
 - Uses DashScope (Alibaba Cloud) Fun-ASR real-time ASR via WebSocket (`src/main/transcription.ts`)
 - Requires a separate `dashscopeApiKey` configured in settings

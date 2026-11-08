@@ -343,6 +343,8 @@ interface Settings {
   lastMode: AppMode
   /** 对话模式: hint as soon as the other side finishes a sentence, or only on the shortcut */
   conversationHintMode: HintMode
+  conversationAudioMode: import('../../../../shared/conversation').ConversationAudioMode
+  conversationMicrophoneDeviceId: string
   /** 对话模式: silence (ms) after which the recogniser ends a sentence; shorter hints sooner */
   conversationSilenceMs: number
   /** 对话模式: a finished sentence shorter than this (punctuation aside) triggers no automatic hint */
@@ -481,6 +483,8 @@ const defaultSettings: Settings = {
 
   lastMode: 'screenshot',
   conversationHintMode: 'auto',
+  conversationAudioMode: 'system',
+  conversationMicrophoneDeviceId: '',
   conversationSilenceMs: 800,
   conversationMinChars: 4,
   conversationTranscriptHidden: false,

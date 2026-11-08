@@ -20,12 +20,7 @@ export function VoiceSection() {
     const loadDevices = async () => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()
-        const needsPermission = devices.every((d) => !d.label)
-        if (needsPermission) {
-          await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-        }
-        const refreshed = await navigator.mediaDevices.enumerateDevices()
-        setAudioDevices(refreshed)
+        setAudioDevices(devices)
       } catch (err) {
         console.error('Failed to enumerate audio devices:', err)
       }
@@ -61,8 +56,8 @@ export function VoiceSection() {
         </Field>
 
         <Field
-          label="音频输入设备"
-          note="默认捕获系统音频，即会议里对方的声音；对话模式请保持系统音频，否则自己说话也会触发提示"
+          label="对方音源（截图模式也使用此输入）"
+          note="默认捕获系统音频；也可选择虚拟音频线等输入设备接收对方声音。这里的输入始终作为对方，自己的麦克风请在「对话模式」单独设置。"
         >
           <Select
             value={audioInputDeviceId || 'system'}
@@ -76,18 +71,22 @@ export function VoiceSection() {
             <SelectContent>
               <SelectItem value="system">系统音频（默认）</SelectItem>
               {audioDevices
-                .filter((d) => d.kind === 'audioinput')
+                .filter((d) => d.kind === 'audioinput' && d.deviceId)
                 .map((d) => (
                   <SelectItem key={d.deviceId} value={d.deviceId}>
                     {d.label || d.deviceId}
                   </SelectItem>
                 ))}
+              {audioInputDeviceId &&
+                !audioDevices.some((d) => d.deviceId === audioInputDeviceId) && (
+                  <SelectItem value={audioInputDeviceId}>{audioInputDeviceId}（已保存）</SelectItem>
+                )}
             </SelectContent>
           </Select>
         </Field>
 
         <Advanced defaultOpen={!!audioOutputDeviceId}>
-          <Field label="音频输出设备" note="用于转录时的监听输出">
+          <Field label="音频处理输出设备" note="保留已选输出设备；转录音频不会回放到扬声器">
             <Select
               value={audioOutputDeviceId || 'default'}
               onValueChange={(val) =>
@@ -100,7 +99,7 @@ export function VoiceSection() {
               <SelectContent>
                 <SelectItem value="default">默认设备</SelectItem>
                 {audioDevices
-                  .filter((d) => d.kind === 'audiooutput')
+                  .filter((d) => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default')
                   .map((d) => (
                     <SelectItem key={d.deviceId} value={d.deviceId}>
                       {d.label || d.deviceId}

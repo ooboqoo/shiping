@@ -165,7 +165,7 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
   // What it answers, for when the transcript column is hidden or scrolled away
   const question = useConversationStore((state) =>
     state.utterances
-      .filter((u) => u.id >= card.fromId && u.id <= card.toId)
+      .filter((u) => u.source !== 'microphone' && u.id >= card.fromId && u.id <= card.toId)
       .map((u) => u.text)
       .join(' ')
   )

@@ -13,12 +13,23 @@ import { getCloneableFields } from '@/lib/utils'
 import { applyTheme } from '@/lib/theme'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
 import { MODE_PATHS } from '@/lib/use-mode-page'
+import { stopAudioCapture } from '@/lib/audio-capture'
+import { useTranscriptionStore } from '@/lib/store/transcription'
 
 export default function App() {
   const [initialized, setInitialized] = useState(false)
   const settingsStore = useSettingsStore()
   const { shortcuts } = useShortcutsStore()
   const theme = useSettingsStore((state) => state.theme)
+
+  // Recognition also ends while settings/help is open. Always release capture resources.
+  useEffect(() => {
+    window.api.onTranscriptionStopped(() => {
+      stopAudioCapture()
+      useTranscriptionStore.getState().setIsTranscribing(false)
+    })
+    return () => window.api.removeTranscriptionStoppedListener()
+  }, [])
 
   // Paint the window before syncing with main, so the first frame already uses
   // the persisted theme; the toolbar window gets the live value pushed to it.

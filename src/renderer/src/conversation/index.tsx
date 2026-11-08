@@ -98,14 +98,9 @@ function useConversationEvents() {
       stopAudioCapture()
       transcription.setIsTranscribing(false)
     })
-    window.api.onTranscriptionStopped(() => {
-      stopAudioCapture()
-      transcription.setIsTranscribing(false)
-    })
     return () => {
       window.api.removeToggleTranscriptionListener()
       window.api.removeTranscriptionErrorListener()
-      window.api.removeTranscriptionStoppedListener()
     }
   }, [])
 }

@@ -452,8 +452,10 @@ const api = {
   startTranscription: (apiKey: string, options?: TranscriptionOptions) =>
     ipcRenderer.invoke('start-transcription', apiKey, options),
   stopTranscription: () => ipcRenderer.invoke('stop-transcription'),
-  sendTranscriptionAudioChunk: (chunk: ArrayBuffer) =>
-    ipcRenderer.send('transcription-audio-chunk', chunk),
+  sendTranscriptionAudioChunk: (
+    chunk: ArrayBuffer,
+    source?: import('../shared/conversation').AudioSource
+  ) => ipcRenderer.send('transcription-audio-chunk', chunk, source),
   getTranscriptionText: () => ipcRenderer.invoke('get-transcription-text') as Promise<string>,
 
   onToggleTranscription: (callback: () => void) => {
