@@ -44,8 +44,13 @@ export default function CoderPage() {
           return
         }
         starting.current = true
-        let phase: 'capture' | 'asr' = 'capture'
+        let phase: 'capture' | 'asr' = 'asr'
         try {
+          // A conversation may still be draining after this page mounted.
+          // Its stopped event must finish before a new capture graph exists.
+          await stopListening()
+          if (request !== operation.current) return
+          phase = 'capture'
           await startAudioCapture()
           if (request !== operation.current) return
           phase = 'asr'
