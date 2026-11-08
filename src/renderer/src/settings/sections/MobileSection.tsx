@@ -118,7 +118,7 @@ function MiniBarField() {
   return (
     <Field
       label="极简悬浮条"
-      note="主窗口收起，屏幕上只留当前模式的几个按钮（截图 / 出提示、翻页、展开），解答和提示在手机上看；悬浮条同样不会被共享屏幕看到，按住左侧把手可拖动"
+      note="主窗口收起，屏幕上只留当前模式的几个按钮（截图 / 出提示、翻页、展开），解答和提示在手机上看；悬浮条和主窗口一样受隐身模式保护（是否生效要自己测试），按住左侧把手可拖动"
     >
       <div className="flex shrink-0 items-center gap-2">
         {key && <ShortcutRenderer shortcut={key} className="text-xs" />}

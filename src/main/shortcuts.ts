@@ -360,6 +360,11 @@ function keepWindowInFront(window: BrowserWindow) {
  */
 let isMiniBarOn = false
 
+/** The 极简悬浮条 stands in for the main window, shown or hidden by `hideOrShowMainWindow` */
+export function inMiniBar(): boolean {
+  return isMiniBarOn
+}
+
 function enterMiniBar(mainWindow: BrowserWindow) {
   if (isMiniBarOn) return
   setSnipSession(false)
@@ -1151,7 +1156,9 @@ const SHORTCUT_SCOPES: Record<
   { page: ShortcutPage; hidden?: true; window?: true; voice?: true }
 > = {
   hideOrShowMainWindow: { page: 'any', hidden: true },
-  toggleMiniBar: { page: 'any', hidden: true },
+  // Not `hidden`: that would hold one more key over every app all day. With
+  // nothing on screen, hideOrShowMainWindow brings back the window or the bar
+  toggleMiniBar: { page: 'any' },
   switchMode: { page: 'mode' },
   ignoreOrEnableMouse: { page: 'any', window: true },
   increaseOpacity: { page: 'mode', window: true },
@@ -1192,10 +1199,10 @@ let recordingShortcut = false
 /**
  * Whether an action's key is held now. A held key never reaches the app in
  * front, so each is held only while its action has something to do: on its
- * own page, and with the window shown. Hidden, the app lives in the background
- * and keeps only the keys meant for that (show it again, 框选识别 / 追加), unless
- * phones are watching (手机同步): their screen stands in for the window, so
- * the actions that do not act on the window itself stay
+ * own page, and with the window or the 极简悬浮条 shown. Hidden, the app lives
+ * in the background and keeps only the keys meant for that (show it again,
+ * 框选识别 / 追加), unless phones are watching (手机同步): their screen stands in for
+ * the window, so the actions that do not act on the window itself stay
  */
 function isShortcutLive(action: string): boolean {
   const scope = SHORTCUT_SCOPES[action] ?? { page: 'any' }

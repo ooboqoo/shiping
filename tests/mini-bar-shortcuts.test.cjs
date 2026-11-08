@@ -11,6 +11,8 @@ function setup(t) {
   const miniBarSender = {}
   let miniBarMode = 'screenshot'
   let onPageChange = noop
+  let viewers = false
+  let onViewersChanged = noop
   let picker = async () => null
   const window = {
     position: [100, 100],
@@ -105,8 +107,10 @@ function setup(t) {
       onTranscriptionError: noop
     },
     './mobile-sync': {
-      hasMobileViewers: () => false,
-      onMobileViewersChanged: noop,
+      hasMobileViewers: () => viewers,
+      onMobileViewersChanged: (fn) => {
+        onViewersChanged = fn
+      },
       markMobileDirty: noop,
       registerMobileSource: noop
     }
@@ -138,6 +142,11 @@ function setup(t) {
     },
     pageChanged: () => onPageChange(),
     record: (enabled) => handlers.get('setShortcutRecording')(null, enabled),
+    // A phone opens or closes the page (手机同步)
+    setViewers: (watching) => {
+      viewers = watching
+      onViewersChanged()
+    },
     miniVisible: () => miniVisible,
     pick: (fn) => {
       picker = fn
@@ -157,14 +166,45 @@ test('visible mini bar keeps actions without phone viewers and hiding it release
   f.api.runShortcutAction('hideOrShowMainWindow')
   assert.equal(f.active('takeScreenshot'), false)
   assert.equal(f.active('moveMainWindowUp'), false)
-  assert.equal(f.active('toggleMiniBar'), true)
+  // Nothing on screen: only the key that brings the bar back is held
+  assert.equal(f.active('toggleMiniBar'), false)
   assert.equal(f.active('hideOrShowMainWindow'), true)
   f.api.runShortcutAction('hideOrShowMainWindow')
   assert.equal(f.active('takeScreenshot'), true)
+  assert.equal(f.active('toggleMiniBar'), true)
   f.api.revealMainWindow(f.window)
   assert.equal(f.miniVisible(), false)
   assert.equal(f.api.isMainWindowShown(), true)
   assert.equal(f.active('switchMode'), true)
+})
+
+test('with phones watching, a hidden mini bar keeps every key but the window ones', (t) => {
+  const f = setup(t)
+  f.trigger('toggleMiniBar')
+  f.api.runShortcutAction('hideOrShowMainWindow')
+  assert.equal(f.miniVisible(), false)
+  assert.equal(f.active('takeScreenshot'), false)
+  // A phone opens the page: the screenshot keys come back without showing anything
+  f.setViewers(true)
+  assert.equal(f.miniVisible(), false)
+  assert.equal(f.active('takeScreenshot'), true)
+  assert.equal(f.active('toggleTranscription'), true)
+  assert.equal(f.active('toggleMiniBar'), true)
+  assert.equal(f.active('hideOrShowMainWindow'), true)
+  // Moving a bar no one sees, or leaving its mode, is not offered
+  assert.equal(f.active('moveMainWindowUp'), false)
+  assert.equal(f.active('switchMode'), false)
+  // The same in 对话模式
+  f.state.inCoderPage = false
+  f.state.inConversationPage = true
+  f.pageChanged()
+  assert.equal(f.active('generateHint'), true)
+  assert.equal(f.active('takeScreenshot'), false)
+  // The phone leaves: back to the keys of an app in the background
+  f.setViewers(false)
+  assert.equal(f.active('generateHint'), false)
+  assert.equal(f.active('toggleMiniBar'), false)
+  assert.equal(f.active('hideOrShowMainWindow'), true)
 })
 
 test('mini bar keeps conversation actions and respects shortcut recording', (t) => {

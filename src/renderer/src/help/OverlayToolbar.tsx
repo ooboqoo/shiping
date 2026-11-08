@@ -45,7 +45,7 @@ export function OverlayToolbarHelp() {
       <ul className="space-y-1 text-sm text-gray-700 list-disc list-inside">
         <li>
           配合「手机同步」使用：解答和提示在手机上看，电脑屏幕上只留一个小悬浮条，主窗口和上面的工具条都收起来。
-          悬浮条和主窗口一样在共享屏幕时对方不可见，点击同样不抢焦点。
+          悬浮条和主窗口一样受隐身模式保护（是否生效同样要自己测试），点击同样不抢焦点。
         </li>
         <li>
           从工具条的收起按钮、快捷键或「设置 →

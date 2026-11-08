@@ -6,11 +6,13 @@ import { settings, onSettingsChanged } from './settings'
 import { state } from './state'
 import {
   hasScreenshotConversation,
+  inMiniBar,
   isMainWindowShown,
   registeredShortcut,
   revealMainWindow,
   runShortcutAction
 } from './shortcuts'
+import { isMiniBarVisible } from './mini-bar-window'
 
 /**
  * The tray icon (macOS menu bar, Windows notification area). It is there for
@@ -41,6 +43,15 @@ function snipAppendLabel(): string {
   return hasScreenshotConversation() ? '框选追加截图' : '框选追加截图（当前没有对话）'
 }
 
+/**
+ * What `hideOrShowMainWindow` will do. While the 极简悬浮条 stands in for the
+ * window it hides / shows the bar, so 显示窗口 would only make the bar vanish
+ */
+function windowItemLabel(): string {
+  if (inMiniBar()) return isMiniBarVisible() ? '隐藏悬浮条' : '显示悬浮条'
+  return isMainWindowShown() ? '隐藏窗口' : '显示窗口'
+}
+
 /** Built on every opening, so it reflects the window and the shortcuts as they are now */
 function buildMenu(): Menu {
   return Menu.buildFromTemplate([
@@ -61,7 +72,7 @@ function buildMenu(): Menu {
     },
     { type: 'separator' },
     {
-      label: isMainWindowShown() ? '隐藏窗口' : '显示窗口',
+      label: windowItemLabel(),
       accelerator: registeredShortcut('hideOrShowMainWindow'),
       registerAccelerator: false,
       click: () => runShortcutAction('hideOrShowMainWindow')

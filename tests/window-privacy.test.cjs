@@ -123,11 +123,18 @@ test('mini bar follows stealth changes before creation and after hiding and show
   const privacy = load('src/main/window-privacy.ts', mocks, cache)
   const bar = load('src/main/mini-bar-window.ts', mocks, cache)
   privacy.setStealthEnabled(false)
-  bar.createMiniBarWindow(new Window())
+  bar.attachMiniBar(new Window())
+  // A renderer of its own: not created until the bar is first shown
+  assert.equal(created.length, 0)
+  bar.showMiniBar([100, 100])
   const mini = created.at(-1)
   assert.equal(mini.protection.at(-1), false)
   assert.equal(mini.title, '识屏 · 极简悬浮条')
-  bar.showMiniBar([100, 100])
+  // Counted as shown at once, so its keys are held; on screen once painted
+  assert.equal(bar.isMiniBarVisible(), true)
+  assert.equal(!!mini.isVisible(), false)
+  mini.emit('ready-to-show')
+  assert.equal(mini.isVisible(), true)
   assert.equal(mini.protection.at(-1), false)
   privacy.setStealthEnabled(true)
   assert.equal(mini.protection.at(-1), true)
@@ -135,9 +142,59 @@ test('mini bar follows stealth changes before creation and after hiding and show
   bar.hideMiniBar()
   privacy.setStealthEnabled(false)
   bar.showMiniBar()
+  assert.equal(created.length, 1)
+  assert.equal(mini.isVisible(), true)
   assert.equal(mini.protection.at(-1), false)
   assert.equal(mini.title, '识屏 · 极简悬浮条')
   bar.hideMiniBar()
+  assert.equal(bar.isMiniBarVisible(), false)
+})
+
+test('a mini bar hidden before its page painted stays hidden', (t) => {
+  const noop = () => {}
+  t.mock.method(global, 'setInterval', () => 1)
+  t.mock.method(global, 'clearInterval', noop)
+  const created = []
+  class MiniWindow extends Window {
+    constructor() {
+      super()
+      created.push(this)
+    }
+    setMenuBarVisibility = noop
+    setOpacity = noop
+    setAlwaysOnTop = noop
+    setVisibleOnAllWorkspaces = noop
+    loadFile = noop
+    setBounds = noop
+    getPosition = () => [0, 0]
+    showInactive() {
+      this.visible = true
+    }
+    hide() {
+      this.visible = false
+    }
+    moveTop = noop
+  }
+  const mocks = {
+    electron: {
+      BrowserWindow: MiniWindow,
+      ipcMain: { handle: noop },
+      screen: {
+        getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })
+      }
+    },
+    '@electron-toolkit/utils': { is: { dev: false } }
+  }
+  const cache = new Map()
+  load('src/main/window-privacy.ts', mocks, cache)
+  const bar = load('src/main/mini-bar-window.ts', mocks, cache)
+  bar.attachMiniBar(new Window())
+  bar.showMiniBar([100, 100])
+  bar.hideMiniBar()
+  const mini = created.at(-1)
+  mini.emit('ready-to-show')
+  assert.equal(!!mini.visible, false)
+  assert.equal(bar.isMiniBarVisible(), false)
 })
 
 test('existing installations default to stealth on and a saved opt-out survives restart', () => {
