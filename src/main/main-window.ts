@@ -4,6 +4,7 @@ import { is } from '@electron-toolkit/utils'
 import { attachToolbar } from './toolbar-window'
 import { applyContentProtection, registerStealthWindow } from './window-privacy'
 import { isMainWindowShown, syncShortcuts, watchMainWindowFocus } from './shortcuts'
+import { createMiniBarWindow } from './mini-bar-window'
 
 export function createWindow(): void {
   // Create the browser window.
@@ -44,6 +45,7 @@ export function createWindow(): void {
   global.mainWindow = mainWindow
   // The toolbar follows the main window's position and visibility on its own
   attachToolbar(mainWindow)
+  createMiniBarWindow(mainWindow)
 
   mainWindow.setMenuBarVisibility(false)
 

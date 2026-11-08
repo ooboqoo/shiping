@@ -13,7 +13,10 @@ import {
   ImagePlus,
   Layers,
   Lightbulb,
+  Maximize2,
   Mic,
+  MicOff,
+  Minimize2,
   MousePointer2,
   SquareDashedMousePointer,
   SquarePlus,
@@ -24,6 +27,7 @@ import {
 } from 'lucide-react'
 import type { AppMode } from './store/settings'
 import {
+  MINI_BAR_LAYOUT,
   TOOLBAR_LAYOUT,
   toolbarActions,
   type ToolbarActionName,
@@ -75,6 +79,13 @@ const DISPLAY: Record<
   switchMode: {
     Icon: ArrowLeftRight,
     label: { screenshot: '切换到对话模式', conversation: '切换到截图模式' }
+  },
+  toggleMiniBar: {
+    Icon: Minimize2,
+    label: {
+      screenshot: '收起为极简悬浮条（解答看手机）',
+      conversation: '收起为极简悬浮条（提示看手机）'
+    }
   }
 }
 
@@ -102,4 +113,50 @@ export function shownToolbarActions(
 ): ToolbarAction[] {
   const shown = new Set(toolbarActions(mode, buttons))
   return TOOLBAR_ACTIONS[mode].filter(({ action }) => shown.has(action))
+}
+
+/** Where the 极简悬浮条 says more than the toolbar's button does */
+const MINI_BAR_DISPLAY: Partial<Record<ToolbarActionName, { Icon?: LucideIcon; label: string }>> = {
+  pageUp: { label: '向上翻页（手机同步翻页）' },
+  pageDown: { label: '向下翻页（手机同步翻页）' },
+  toggleTranscription: { label: '开始/停止监听对方说话（监听中右上角有小圆点，停止时图标带斜线）' },
+  toggleMiniBar: { Icon: Maximize2, label: '展开完整窗口' }
+}
+
+function buildMiniBarActions(mode: AppMode): ToolbarAction[] {
+  return MINI_BAR_LAYOUT[mode].map((action) => {
+    const { Icon, label } = DISPLAY[action]
+    const own = MINI_BAR_DISPLAY[action]
+    return {
+      action,
+      Icon: own?.Icon ?? Icon,
+      label: own?.label ?? (typeof label === 'string' ? label : label[mode]),
+      defaultOn: true
+    }
+  })
+}
+
+/**
+ * The 极简悬浮条's buttons per mode, after its drag grip (the list itself is
+ * `MINI_BAR_LAYOUT` in `shared/toolbar.ts`, where main checks its clicks).
+ * Paging pages the phones too, for when an exam app swallows the shortcuts:
+ * hover dwell then pages without a click.
+ */
+export const MINI_BAR_ACTIONS: Record<AppMode, ToolbarAction[]> = {
+  screenshot: buildMiniBarActions('screenshot'),
+  conversation: buildMiniBarActions('conversation')
+}
+
+/**
+ * The microphone button of the toolbar and the 极简悬浮条. Kept quiet on
+ * purpose, to be read by the user and not catch anyone else's eye: a slash
+ * while not listening, a small dot while listening, a dim red dot when
+ * recognition ended on an error. No colour fills, no animation (main.css)
+ */
+export function micButton(
+  listening: boolean,
+  failed: boolean
+): { Icon: LucideIcon; className: string } {
+  if (listening) return { Icon: Mic, className: 'mic-listening' }
+  return { Icon: MicOff, className: failed ? 'mic-off mic-failed' : 'mic-off' }
 }

@@ -28,7 +28,7 @@ process.on('uncaughtException', (error) => {
   console.error(error)
 })
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { syncShortcuts } from './shortcuts'
+import { revealMainWindow } from './shortcuts'
 import './transcription'
 import './conversation'
 import './knowledge'
@@ -101,9 +101,8 @@ app.whenReady().then(() => {
 
   // Clicking the Dock icon brings back a window hidden with the shortcut
   app.on('activate', function () {
-    if (global.mainWindow && !global.mainWindow.isVisible()) {
-      global.mainWindow.show()
-      syncShortcuts()
+    if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+      revealMainWindow(global.mainWindow)
     }
   })
 })

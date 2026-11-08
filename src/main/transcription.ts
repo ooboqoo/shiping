@@ -27,11 +27,23 @@ let purpose: TranscriptionPurpose = 'screenshot'
 
 type SentenceListener = (text: string, final: boolean) => void
 const sentenceListeners = new Set<SentenceListener>()
+const startListeners = new Set<(purpose: TranscriptionPurpose) => void>()
+const errorListeners = new Set<(message: string) => void>()
 const endListeners = new Set<() => void>()
 
 /** 对话模式: every revision of the sentence being spoken, and its final text */
 export function onConversationSentence(listener: SentenceListener): void {
   sentenceListeners.add(listener)
+}
+
+/** Recognition started, for 截图模式's text or 对话模式's sentences */
+export function onTranscriptionStart(listener: (purpose: TranscriptionPurpose) => void): void {
+  startListeners.add(listener)
+}
+
+/** Recognition failed; it is reported stopped right after */
+export function onTranscriptionError(listener: (message: string) => void): void {
+  errorListeners.add(listener)
 }
 
 /** Recognition stopped, for whatever reason */
@@ -47,6 +59,11 @@ export function isTranscriptionRunning(purposeWanted: TranscriptionPurpose): boo
 function reportStopped() {
   sendToRenderer('transcription-stopped')
   endListeners.forEach((listener) => listener())
+}
+
+function reportError(message: string) {
+  sendToRenderer('transcription-error', message)
+  errorListeners.forEach((listener) => listener(message))
 }
 
 function sendToRenderer(channel: string, ...args: unknown[]) {
@@ -77,6 +94,7 @@ function startTranscription(apiKey: string, options: TranscriptionOptions = {}) 
   purpose = options.purpose ?? 'screenshot'
   taskId = randomUUID()
   const silence = options.maxSentenceSilence
+  startListeners.forEach((listener) => listener(purpose))
 
   ws = new WebSocket(WS_URL, {
     headers: { Authorization: `bearer ${apiKey}` }
@@ -147,7 +165,7 @@ function startTranscription(apiKey: string, options: TranscriptionOptions = {}) 
       if (event === 'task-failed') {
         const errorMsg = msg.header?.error_message || '语音识别失败'
         console.error('Transcription task failed:', errorMsg)
-        sendToRenderer('transcription-error', errorMsg)
+        reportError(errorMsg)
         cleanup()
         reportStopped()
         return
@@ -164,7 +182,7 @@ function startTranscription(apiKey: string, options: TranscriptionOptions = {}) 
 
   ws.on('error', (err) => {
     console.error('Transcription WebSocket error:', err)
-    sendToRenderer('transcription-error', err.message || 'WebSocket 连接失败')
+    reportError(err.message || 'WebSocket 连接失败')
     cleanup()
     reportStopped()
   })

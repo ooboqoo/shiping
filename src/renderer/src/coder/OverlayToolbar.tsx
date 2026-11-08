@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { shownToolbarActions, type ToolbarActionName } from '@/lib/toolbar-actions'
+import { micButton, shownToolbarActions, type ToolbarActionName } from '@/lib/toolbar-actions'
 import type { LucideIcon } from 'lucide-react'
 import { applyTheme } from '@/lib/theme'
 import { useAppStore } from '@/lib/store/app'
@@ -21,7 +21,10 @@ export function OverlayToolbar() {
   const [buttons, setButtons] = useState(() => useSettingsStore.getState().toolbarButtons)
   const syncAppState = useAppStore((state) => state.syncAppState)
   const inConversationPage = useAppStore((state) => state.inConversationPage)
-  const actions = shownToolbarActions(inConversationPage ? 'conversation' : 'screenshot', buttons)
+  const mode = inConversationPage ? 'conversation' : 'screenshot'
+  const listening = useAppStore((state) => state.listening === mode)
+  const listenFailed = useAppStore((state) => state.listenFailed)
+  const actions = shownToolbarActions(mode, buttons)
 
   // This window's store is its own copy, so the state main pushes has to be
   // relayed here; otherwise the toolbar's own buttons show stale state. The
@@ -54,7 +57,14 @@ export function OverlayToolbar() {
   return (
     <div className="overlay-toolbar overlay-toolbar-root">
       {actions.map(({ action, Icon }) => (
-        <ToolbarButton key={action} action={action} Icon={Icon} hoverDelay={hoverDelay} />
+        <ToolbarButton
+          key={action}
+          action={action}
+          hoverDelay={hoverDelay}
+          {...(action === 'toggleTranscription'
+            ? micButton(listening, listenFailed)
+            : { Icon, className: undefined })}
+        />
       ))}
     </div>
   )
@@ -72,14 +82,17 @@ export function OverlayToolbar() {
  * ahead of it — and therefore never a click. Moves are untouched, which is why
  * hover dwell has always worked there.
  */
-function ToolbarButton({
+export function ToolbarButton({
   action,
   Icon,
-  hoverDelay
+  hoverDelay,
+  className
 }: {
   action: ToolbarActionName
   Icon: LucideIcon
   hoverDelay: number
+  /** A state the button shows, such as the 极简悬浮条's microphone */
+  className?: string
 }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isDwelling, setIsDwelling] = useState(false)
@@ -111,6 +124,7 @@ function ToolbarButton({
     <Button
       variant="ghost"
       size="icon"
+      className={className}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={cancelDwell}
       onMouseUp={(event) => {

@@ -23,6 +23,14 @@ export interface MobileAnswer {
 export interface MobileConversation {
   utterances: Utterance[]
   hints: Pick<HintCard, 'id' | 'fromId' | 'toId' | 'status' | 'text' | 'error'>[]
+  /**
+   * Whether the other side is being listened to. With the main window folded
+   * into the 极简悬浮条 the phone is the only place a recognition that stopped
+   * by itself can be noticed
+   */
+  listening: boolean
+  /** Why recognition last failed, until it is started again */
+  listenError?: string
 }
 
 export interface MobileState {

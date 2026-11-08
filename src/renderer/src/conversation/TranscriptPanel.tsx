@@ -30,8 +30,8 @@ export function TranscriptPanel() {
       <div className="flex h-8 shrink-0 items-center gap-2 px-3 text-xs text-app-muted-fg select-none">
         <span className="font-medium">对方说的话</span>
         {isTranscribing && (
-          <span className="flex items-center gap-1 text-green-500">
-            <Mic className="size-3.5 animate-pulse" />
+          <span className="flex items-center gap-1">
+            <Mic className="size-3.5" />
             正在听
           </span>
         )}

@@ -1,8 +1,7 @@
 import { PanelTop } from 'lucide-react'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
-import { TOOLBAR_ACTIONS } from '@/lib/toolbar-actions'
-import type { AppMode } from '@/lib/store/settings'
+import { MINI_BAR_ACTIONS, TOOLBAR_ACTIONS, type ToolbarAction } from '@/lib/toolbar-actions'
 import { MODE_NAMES } from '@/lib/use-mode-page'
 import { HelpSection } from './components'
 
@@ -15,7 +14,7 @@ export function OverlayToolbarHelp() {
         二是不希望通过键盘触发操作时。
       </p>
       {(['screenshot', 'conversation'] as const).map((mode) => (
-        <ToolbarActions key={mode} mode={mode} />
+        <ToolbarActions key={mode} title={MODE_NAMES[mode]} actions={TOOLBAR_ACTIONS[mode]} />
       ))}
       <ul className="space-y-1 text-sm text-gray-700 list-disc list-inside">
         <li>点击按钮不会抢走焦点，做题页面不会失焦，光标也不会有明显的窗口切换动作。</li>
@@ -36,17 +35,43 @@ export function OverlayToolbarHelp() {
         </li>
         <li>如不需要，可在「设置 → 界面与隐私 → 悬浮工具条」中关闭。</li>
       </ul>
+      {(['screenshot', 'conversation'] as const).map((mode) => (
+        <ToolbarActions
+          key={mode}
+          title={`极简悬浮条 · ${MODE_NAMES[mode]}`}
+          actions={MINI_BAR_ACTIONS[mode]}
+        />
+      ))}
+      <ul className="space-y-1 text-sm text-gray-700 list-disc list-inside">
+        <li>
+          配合「手机同步」使用：解答和提示在手机上看，电脑屏幕上只留一个小悬浮条，主窗口和上面的工具条都收起来。
+          悬浮条和主窗口一样在共享屏幕时对方不可见，点击同样不抢焦点。
+        </li>
+        <li>
+          从工具条的收起按钮、快捷键或「设置 →
+          手机同步」进入，停留在当前模式，对话模式的监听不会中断；点悬浮条最右边的按钮或再按一次快捷键展开。
+        </li>
+        <li>
+          翻页按钮同时翻动手机上的内容。考试/面试软件占用了快捷键时，配合「悬停触发」不用点击、也不用碰手机就能翻页。
+        </li>
+        <li>
+          麦克风图标（工具条上的也一样）带斜线表示没在监听，右上角有个小圆点表示正在监听，小红点表示语音识别出错、已经断开；样式刻意做得不显眼。手机上的「对话提示」页同样会显示监听状态和出错原因。
+        </li>
+        <li>
+          按住左侧的把手可以拖动悬浮条，「移动窗口」快捷键此时也移动悬浮条；位置在本次运行期间会记住。
+        </li>
+        <li>悬浮条显示时，「隐藏/显示窗口」快捷键隐藏/显示的是悬浮条。</li>
+      </ul>
     </HelpSection>
   )
 }
 
-function ToolbarActions({ mode }: { mode: AppMode }) {
+function ToolbarActions({ title, actions }: { title: string; actions: ToolbarAction[] }) {
   const { shortcuts } = useShortcutsStore()
-  const actions = TOOLBAR_ACTIONS[mode]
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm text-gray-500">{MODE_NAMES[mode]}</h3>
+      <h3 className="text-sm text-gray-500">{title}</h3>
       <div className="overlay-toolbar w-fit">
         {actions
           .filter(({ defaultOn }) => defaultOn)

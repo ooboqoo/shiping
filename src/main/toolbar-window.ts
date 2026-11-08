@@ -18,6 +18,8 @@ let toolbarWindow: BrowserWindow | null = null
 let ownerWindow: BrowserWindow | null = null
 /** Whether the renderer wants the toolbar on screen (main page + enabled in settings) */
 let isToolbarWanted = false
+/** The 极简悬浮条 stands in for both windows; nothing may bring the toolbar back meanwhile */
+let isToolbarSuppressed = false
 let toolbarOpacity = DEFAULT_OPACITY
 /**
  * The width of the buttons on show, set by `setToolbarWidth()` and never read
@@ -128,7 +130,7 @@ function syncToolbarBounds(): void {
 
 /** Show the toolbar only if the renderer asked for it and the main window is on screen */
 export function showToolbar(): void {
-  if (!isToolbarWanted) return
+  if (!isToolbarWanted || isToolbarSuppressed) return
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return
   if (!ownerWindow || ownerWindow.isDestroyed() || !ownerWindow.isVisible()) return
 
@@ -161,6 +163,20 @@ export function setToolbarWanted(wanted: boolean): void {
     showToolbar()
   } else {
     hideToolbar()
+  }
+}
+
+/**
+ * Keep the toolbar off screen while the 极简悬浮条 is up. On Windows the main
+ * window is only soft-hidden then, which still counts as visible, so the
+ * visibility of the main window alone cannot keep it away.
+ */
+export function setToolbarSuppressed(suppressed: boolean): void {
+  isToolbarSuppressed = suppressed
+  if (suppressed) {
+    hideToolbar()
+  } else {
+    showToolbar()
   }
 }
 

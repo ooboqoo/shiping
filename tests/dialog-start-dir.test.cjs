@@ -19,7 +19,12 @@ function loadSettings(home) {
     },
     ipcMain: { handle: (channel, fn) => handlers.set(channel, fn) }
   }
-  const mocks = { electron, './toolbar-window': {}, './window-privacy': {} }
+  const mocks = {
+    electron,
+    './toolbar-window': {},
+    './window-privacy': {},
+    './mini-bar-window': {}
+  }
   return { ...load('src/main/settings.ts', mocks), dialogCalls, handlers }
 }
 

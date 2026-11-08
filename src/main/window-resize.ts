@@ -1,6 +1,8 @@
 import { BrowserWindow, ipcMain, screen, type Rectangle } from 'electron'
+import { getMiniBarSize } from './mini-bar-window'
 
-export type ResizeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
+/** A resize by one edge or corner, or `move`: the whole window follows the cursor */
+export type ResizeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw' | 'move'
 
 type ResizeState = {
   window: BrowserWindow
@@ -19,6 +21,8 @@ const MIN_HEIGHT = 36
 const POLL_INTERVAL = 16
 /** Only the renderer can end a drag, so never follow the cursor indefinitely */
 const MAX_DRAG_DURATION = 30_000
+/** Long enough for Windows to have rescaled a window just dropped onto a screen of other scaling */
+const MOVE_SETTLE_DELAY = 100
 
 let resizeState: ResizeState | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -67,12 +71,46 @@ function trackCursor(): void {
 
   // Every frame is derived from the bounds snapshotted at drag start, so the
   // rounding of a single getBounds() cannot accumulate
+  if (resizeState.direction === 'move') {
+    const { window, bounds, startX, startY } = resizeState
+    window.setBounds({
+      x: bounds.x + x - startX,
+      y: bounds.y + y - startY,
+      ...moveSize(window, bounds)
+    })
+    return
+  }
   resizeState.window.setBounds(resizeBounds(resizeState, x, y))
+}
+
+/**
+ * A move writes the size along with the position, never setPosition() alone:
+ * that writes back the size Windows reports, which on a screen of different
+ * scaling is converted at the wrong one, so the window grew with every frame.
+ * The 极简悬浮条 has a fixed size; anything else keeps its size at drag start.
+ */
+function moveSize(window: BrowserWindow, bounds: Rectangle): { width: number; height: number } {
+  return getMiniBarSize(window) ?? { width: bounds.width, height: bounds.height }
 }
 
 function stopResize(): void {
   stopTimers()
+  if (resizeState?.direction === 'move') settleMove(resizeState)
   resizeState = null
+}
+
+/**
+ * Crossing onto a screen of other scaling, Windows rescales the window once by
+ * the ratio of the two (75×33 for 120×44 from 125% to 200%); the next frame
+ * puts the size back. A drop on that very frame would keep it, so it is put
+ * back once more after the drop.
+ */
+function settleMove({ window, bounds }: ResizeState): void {
+  setTimeout(() => {
+    if (window.isDestroyed()) return
+    const [x, y] = window.getPosition()
+    window.setBounds({ x, y, ...moveSize(window, bounds) })
+  }, MOVE_SETTLE_DELAY)
 }
 
 function stopTimers(): void {

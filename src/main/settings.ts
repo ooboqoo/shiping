@@ -17,6 +17,7 @@ import {
   normalizeExternalKnowledge
 } from '../shared/external-knowledge'
 import { setStealthEnabled } from './window-privacy'
+import { sendToMiniBar, setMiniBarOpacity } from './mini-bar-window'
 
 ipcMain.handle('getAppVersion', () => {
   return app.getVersion()
@@ -58,13 +59,16 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   }
   if ('opacity' in _settings) {
     setToolbarOpacity(settings.opacity)
+    setMiniBarOpacity(settings.opacity)
   }
   if ('toolbarHoverDelay' in _settings || 'theme' in _settings || 'toolbarButtons' in _settings) {
-    syncToolbarSettings({
+    const toolbarSettings = {
       hoverDelay: settings.toolbarHoverDelay,
       theme: settings.theme,
       buttons: settings.toolbarButtons
-    })
+    }
+    syncToolbarSettings(toolbarSettings)
+    sendToMiniBar('sync-toolbar-settings', toolbarSettings)
   }
 })
 

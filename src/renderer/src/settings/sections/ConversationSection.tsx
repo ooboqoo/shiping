@@ -100,7 +100,7 @@ export function ConversationSection({
           <Advanced>
             <Field
               label="说完判定"
-              note="对方停顿多久算说完一句话；越短出提示越快。重新开始监听后生效"
+              note="对方停顿多久算说完一句话；越短出提示越快。听起来是问句时会提前约 0.35 秒开始出提示，对方接着说就自动重写。重新开始监听后生效"
             >
               <Select
                 value={String(conversationSilenceMs)}
@@ -121,7 +121,7 @@ export function ConversationSection({
 
             <Field
               label="最短触发字数"
-              note="对方说完的一句话少于这个字数（不算标点）时不自动出提示，用来跳过「好的」「嗯」"
+              note="对方说完的一句话少于这个字数（不算标点）时不自动出提示，用来跳过「好的」「嗯」；「为什么？」这类问句 2 个字就够"
             >
               <Select
                 value={String(conversationMinChars)}

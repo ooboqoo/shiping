@@ -51,6 +51,11 @@ const defaultShortcuts: Record<string, Omit<Shortcut, 'defaultKey'>> = {
     key: `${platformAlt}+Shift+M`,
     category: 'Window Management'
   },
+  toggleMiniBar: {
+    action: 'toggleMiniBar',
+    key: `${platformAlt}+Shift+H`,
+    category: 'Window Management'
+  },
   ignoreOrEnableMouse: {
     action: 'ignoreOrEnableMouse',
     key: `${platformAlt}+M`,

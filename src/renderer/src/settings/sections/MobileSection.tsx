@@ -111,6 +111,29 @@ function LinkState({ state, error }: { state: MobileLinkState; error?: string })
   )
 }
 
+/** With the answer and the hints on the phone, the desktop needs no more than a few buttons */
+function MiniBarField() {
+  const { shortcuts } = useShortcutsStore()
+  const key = shortcuts.toggleMiniBar?.key
+  return (
+    <Field
+      label="极简悬浮条"
+      note="主窗口收起，屏幕上只留当前模式的几个按钮（截图 / 出提示、翻页、展开），解答和提示在手机上看；悬浮条同样不会被共享屏幕看到，按住左侧把手可拖动"
+    >
+      <div className="flex shrink-0 items-center gap-2">
+        {key && <ShortcutRenderer shortcut={key} className="text-xs" />}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.api.triggerAction('toggleMiniBar')}
+        >
+          收起为悬浮条
+        </Button>
+      </div>
+    </Field>
+  )
+}
+
 /** What goes wrong in practice, folded so the page stays short */
 function Notes() {
   const { shortcuts } = useShortcutsStore()
@@ -255,6 +278,8 @@ export function MobileSection() {
             )}
           </div>
         )}
+
+        <MiniBarField />
 
         <Notes />
       </div>
