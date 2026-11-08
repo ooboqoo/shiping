@@ -178,11 +178,19 @@ export function getMemoStream(system: string, prompt: string, abortSignal?: Abor
   return streamWith('conversation', [{ role: 'user', content: prompt }], abortSignal, { system })
 }
 
+/** Silent background refusals must not suppress a foreground setting's first notification. */
+const summaryThinkingRefusals = new Set<string>()
+
 /** Optional per-round cache: no scene, library, external retrieval or hint instructions. */
 export async function summarizeConversation(text: string, signal: AbortSignal): Promise<string> {
   const profile = getModeProfile('conversation')
   const model = getModel(profile)
-  const transport = createThinkingOffFetch(profile.apiBaseURL, () => {}, apiFetch)
+  const transport = createThinkingOffFetch(
+    profile.apiBaseURL,
+    () => {},
+    apiFetch,
+    summaryThinkingRefusals
+  )
   const response = await transport(
     `${(profile.apiBaseURL.trim() || DEFAULT_API_BASE_URL).replace(/\/+$/, '')}/chat/completions`,
     {

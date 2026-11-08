@@ -103,3 +103,99 @@ test('new stores normalize corrupted summary choices without resetting valid per
     delete global.localStorage
   }
 })
+
+for (const summaryFirst of [true, false]) {
+  test(`thinking refusal caches stay isolated when ${summaryFirst ? 'background summary' : 'foreground hint'} runs first`, async (t) => {
+    const calls = [],
+      notices = []
+    const profile = {
+      apiKey: 'test',
+      apiBaseURL: 'https://isolation.example/v1',
+      model: 'Qwen/RejectThinking',
+      apiHeaders: '',
+      disableThinking: false
+    }
+    const previousWindow = global.mainWindow
+    global.mainWindow = {
+      isDestroyed: () => false,
+      webContents: { send: (...args) => notices.push(args) }
+    }
+    t.after(() => {
+      global.mainWindow = previousWindow
+    })
+    const api = load.createLoader({
+      './settings': { settings: { conversationPrompt: '正常提示' }, getModeProfile: () => profile },
+      './knowledge': { getKnowledgePrompt: () => '' },
+      './external-knowledge': {
+        getExternalReference: async () => undefined,
+        withReference: (messages) => messages
+      },
+      './api-fetch': {
+        apiFetch: async (_url, init) => {
+          const body = JSON.parse(init.body)
+          calls.push({ body, signal: init.signal })
+          if (body.enable_thinking === false)
+            return new Response('enable_thinking is unsupported', { status: 400 })
+          if (!body.stream)
+            return new Response(JSON.stringify({ choices: [{ message: { content: '摘要' } }] }), {
+              status: 200
+            })
+          const event = {
+            id: 'fixture',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: profile.model,
+            choices: [{ index: 0, delta: { content: '前台回答' }, finish_reason: null }]
+          }
+          const finish = { ...event, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }
+          return new Response(
+            `data: ${JSON.stringify(event)}\n\ndata: ${JSON.stringify(finish)}\n\ndata: [DONE]\n\n`,
+            { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
+          )
+        }
+      }
+    })('src/main/ai.ts')
+    const signal = new AbortController().signal
+    const summary = async () =>
+      assert.equal(await api.summarizeConversation('待摘要内容', signal), '摘要')
+    const foreground = async () => {
+      profile.disableThinking = true
+      let answer = ''
+      for await (const chunk of api.getHintStream([{ role: 'user', content: '前台问题' }], signal))
+        if (chunk.kind === 'text') answer += chunk.delta
+      assert.equal(answer, '前台回答')
+    }
+    if (summaryFirst) {
+      await summary()
+      assert.deepEqual(notices, [])
+      await foreground()
+    } else {
+      await foreground()
+      await summary()
+    }
+    assert.deepEqual(
+      calls.slice(0, 4).map(({ body }) => [Boolean(body.stream), body.enable_thinking]),
+      summaryFirst
+        ? [
+            [false, false],
+            [false, undefined],
+            [true, false],
+            [true, undefined]
+          ]
+        : [
+            [true, false],
+            [true, undefined],
+            [false, false],
+            [false, undefined]
+          ]
+    )
+    assert.deepEqual(notices, [['thinking-unsupported', 'Qwen/RejectThinking']])
+    await summary()
+    await foreground()
+    assert.equal(calls.length, 6)
+    assert.equal(calls[4].body.enable_thinking, undefined)
+    assert.equal(calls[5].body.enable_thinking, undefined)
+    assert.equal(notices.length, 1)
+    assert(calls.every((call) => call.signal === signal))
+  })
+}

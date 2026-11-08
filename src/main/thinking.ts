@@ -90,7 +90,8 @@ function createExtraFieldsFetch(
   baseURL: string,
   fieldsFor: (model: string) => Record<string, unknown>,
   onRefused: (model: string) => void,
-  transport: typeof fetch
+  transport: typeof fetch,
+  refusalCache: Set<string> = refused
 ): typeof fetch {
   return async (input, init) => {
     let body: unknown
@@ -103,7 +104,7 @@ function createExtraFieldsFetch(
 
     const model = String((body as { model?: unknown }).model ?? '')
     const key = `${kind}\n${baseURL.trim()}\n${model}`
-    if (refused.has(key)) return transport(input, init)
+    if (refusalCache.has(key)) return transport(input, init)
 
     const response = await transport(input, {
       ...init,
@@ -116,24 +117,26 @@ function createExtraFieldsFetch(
       .catch(() => '')
     if (!THINKING_FIELD_ERROR.test(detail)) return response
 
-    refused.add(key)
+    refusalCache.add(key)
     onRefused(model)
     return transport(input, init)
   }
 }
 
-/** 「关闭思考」: adds the thinking-off fields, see createExtraFieldsFetch() */
+/** 「关闭思考」: callers with silent/background policies may supply an isolated refusal cache. */
 export function createThinkingOffFetch(
   baseURL: string,
   onRefused: (model: string) => void,
-  transport: typeof fetch = fetch
+  transport: typeof fetch = fetch,
+  refusalCache: Set<string> = refused
 ): typeof fetch {
   return createExtraFieldsFetch(
     'thinking-off',
     baseURL,
     (model) => thinkingOffFields(baseURL, model),
     onRefused,
-    transport
+    transport,
+    refusalCache
   )
 }
 
