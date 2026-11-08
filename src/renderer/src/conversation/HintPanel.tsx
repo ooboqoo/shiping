@@ -9,8 +9,9 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
-import { NO_REPLY, type HintCard } from '../../../shared/conversation'
+import { hasAnswerText, NO_REPLY, type HintCard } from '../../../shared/conversation'
 import { startListening } from './listening'
+import { observeHintVisible } from './hint-visibility'
 
 /** What one page of scrolling keeps of the previous page, so the eye finds its place */
 const PAGE_OVERLAP = 120
@@ -161,6 +162,7 @@ function revealRest(panel: HTMLElement, card: HTMLElement) {
 }
 
 function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | null) => void }) {
+  const answerRef = useRef<HTMLDivElement | null>(null)
   const setFocusedHintId = useConversationStore((state) => state.setFocusedHintId)
   // What it answers, for when the transcript column is hidden or scrolled away
   const question = useConversationStore((state) =>
@@ -170,6 +172,24 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
       .join(' ')
   )
   const noReply = card.status === 'done' && card.text.trim() === NO_REPLY
+  const hasText = hasAnswerText(card.text)
+  const { id, requestedAt, requestId, firstTextAt, visibleLatencyMs, status } = card
+  useEffect(() => {
+    const element = answerRef.current
+    if (
+      !element ||
+      !hasText ||
+      status === 'waiting' ||
+      requestedAt === undefined ||
+      requestId === undefined ||
+      firstTextAt === undefined ||
+      visibleLatencyMs !== undefined
+    )
+      return
+    return observeHintVisible(element, () => {
+      return window.api.reportHintVisible(id, requestedAt, requestId).catch(() => false)
+    })
+  }, [id, requestId, requestedAt, firstTextAt, visibleLatencyMs, status, hasText])
 
   return (
     <article
@@ -185,10 +205,20 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
         {question && <span className="min-w-0 truncate">「{question}」</span>}
         <span className="ml-auto shrink-0">
           {card.source === 'auto' ? '自动' : '手动'}
-          {card.latencyMs !== undefined && ` · ${(card.latencyMs / 1000).toFixed(1)}s`}
           {card.status === 'stopped' && ' · 已停止'}
         </span>
       </div>
+      {card.latencyMs !== undefined && (
+        <p className="mb-1 flex flex-wrap gap-x-2 text-[11px] text-app-muted-fg select-none">
+          <span>首字 {(card.latencyMs / 1000).toFixed(1)}s</span>
+          {card.speechLatencyMs !== undefined && (
+            <span>语音 {(card.speechLatencyMs / 1000).toFixed(1)}s</span>
+          )}
+          {card.visibleLatencyMs !== undefined && (
+            <span>上屏 {(card.visibleLatencyMs / 1000).toFixed(1)}s</span>
+          )}
+        </p>
+      )}
       {card.status === 'waiting' ? (
         <p className="animate-pulse text-sm text-app-muted-fg">对方还在说，说完后重新生成…</p>
       ) : card.status === 'streaming' && !card.text ? (
@@ -208,7 +238,11 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
           </div>
         </details>
       )}
-      {card.text && card.status !== 'waiting' && <MarkdownRenderer>{card.text}</MarkdownRenderer>}
+      {card.text && card.status !== 'waiting' && (
+        <div ref={answerRef}>
+          <MarkdownRenderer>{card.text}</MarkdownRenderer>
+        </div>
+      )}
       {card.status === 'error' && (
         <p className="text-sm break-words text-red-400">生成失败：{card.error}</p>
       )}

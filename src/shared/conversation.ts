@@ -12,6 +12,9 @@ export interface Utterance {
   text: string
   /** False while the recogniser is still revising it */
   final: boolean
+  /** Main's receipt time of the latest revision and of the final sentence */
+  updatedAt?: number
+  finalAt?: number
 }
 
 export type HintStatus =
@@ -34,8 +37,17 @@ export interface HintCard {
   /** What the model reasoned before `text`; empty for non-thinking models */
   reasoning: string
   error?: string
-  /** From the request to the first chunk, in ms; absent until the first chunk */
+  /** Per-card generation, never reused after a rewrite or conversation clear */
+  requestId?: number
+  /** Main's clock, when this request began and its first meaningful answer arrived */
+  requestedAt?: number
+  firstTextAt?: number
+  /** Request to first meaningful answer text; reasoning and formatting do not count */
   latencyMs?: number
+  /** Last final/revised sentence receipt to first meaningful answer text */
+  speechLatencyMs?: number
+  /** Request to renderer's first visible-frame acknowledgement (including IPC) */
+  visibleLatencyMs?: number
 }
 
 export interface ConversationSnapshot {
@@ -51,6 +63,44 @@ export const NO_REPLY = '（无需回应）'
 /** Characters that carry meaning: punctuation and spaces do not count towards the minimum */
 export function countMeaningfulChars(text: string): number {
   return text.replace(/[\s\p{P}\p{S}]/gu, '').length
+}
+
+/** Common streamed Markdown prefixes, inspected cumulatively; not a full Markdown parser. */
+export function hasAnswerText(text: string): boolean {
+  let fence: { marker: string; length: number } | undefined
+  for (let line of text.split(/\r?\n/)) {
+    if (fence) {
+      const closing = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)
+      if (closing && closing[1][0] === fence.marker && closing[1].length >= fence.length) {
+        fence = undefined
+        continue
+      }
+      // Code punctuation is itself visible content, unlike Markdown markers.
+      if (line.trim()) return true
+      continue
+    }
+    line = line
+      .replace(/^(?: {0,3}>[ \t]?)+/, '')
+      .replace(/^(?:[ \t]*(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$))+/, '')
+      .replace(/^\[[ xX]\](?:[ \t]+|$)/, '')
+      .replace(/^ {0,3}#{1,6}(?:[ \t]+|$)/, '')
+    // Single-line link definitions render no answer text. Four-space-indented
+    // definitions remain code, and fenced code was handled above.
+    if (
+      /^ {0,3}\[(?![ \t]*\])(?:\\.|[^\]\\\r\n]){1,999}\]:[ \t]*(?:<[^<>\r\n]*>|[^\s<>]+)(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/.test(
+        line
+      )
+    )
+      continue
+    const opening = line.match(/^ {0,3}(`{3,}|~{3,})/)
+    if (opening) {
+      fence = { marker: opening[1][0], length: opening[1].length }
+      continue
+    }
+    const content = line.replace(/\${1,2}|\\[()[\]]/g, '').replace(/[`*~_#>|\\\-=]/g, '')
+    if (/[\p{L}\p{N}\p{S}]/u.test(content)) return true
+  }
+  return false
 }
 
 /** Ends like a question: a question mark, or a closing particle */

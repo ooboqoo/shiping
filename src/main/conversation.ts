@@ -14,6 +14,7 @@ import {
 import { markMobileDirty, registerMobileSource } from './mobile-sync'
 import {
   countMeaningfulChars,
+  hasAnswerText,
   looksLikeQuestion,
   NO_REPLY,
   type ConversationSnapshot,
@@ -245,6 +246,9 @@ function handleSentence(text: string, final: boolean) {
     utterance.final = final
   }
 
+  utterance.updatedAt = Date.now()
+  if (final) utterance.finalAt = utterance.updatedAt
+
   if (final && !utterance.text.trim()) {
     utterances.pop()
     send('conversation-utterance-removed', utterance.id)
@@ -295,6 +299,9 @@ function onSentenceGrowing(utterance: Utterance) {
     card.text = ''
     card.reasoning = ''
     card.latencyMs = undefined
+    card.speechLatencyMs = undefined
+    card.firstTextAt = undefined
+    card.visibleLatencyMs = undefined
     publishHint(card)
   }
 }
@@ -563,6 +570,9 @@ async function startHint(
 ): Promise<void> {
   stopStream(card.id)
   earlyStarts.delete(card.id)
+  const generation = (generations.get(card.id) ?? 0) + 1
+  generations.set(card.id, generation)
+  const requestedAt = Date.now()
   const last = utterances.find((u) => u.id === toId)
   if (early && last) {
     earlyStarts.set(card.id, { utteranceId: toId, chars: countMeaningfulChars(last.text) })
@@ -575,7 +585,12 @@ async function startHint(
     text: '',
     reasoning: '',
     error: undefined,
-    latencyMs: undefined
+    latencyMs: undefined,
+    speechLatencyMs: undefined,
+    firstTextAt: undefined,
+    visibleLatencyMs: undefined,
+    requestedAt,
+    requestId: generation
   } satisfies Partial<HintCard>)
   hintedUpTo = Math.max(hintedUpTo, toId)
   publishHint(card)
@@ -587,9 +602,7 @@ async function startHint(
     return
   }
 
-  const generation = (generations.get(card.id) ?? 0) + 1
-  generations.set(card.id, generation)
-  const stream: HintStream = { controller: new AbortController(), startedAt: Date.now() }
+  const stream: HintStream = { controller: new AbortController(), startedAt: requestedAt }
   streams.set(card.id, stream)
   lastRequestAt = stream.startedAt
   const messages = buildMessages(fromId, toId, previous, early)
@@ -598,13 +611,25 @@ async function startHint(
     (signal) => getHintStream(messages, signal, query),
     stream.controller,
     (chunk) => {
+      if (streams.get(card.id) !== stream || generations.get(card.id) !== generation) return
       if (chunk.kind === 'reasoning') {
         // Kept on the card and shipped with its next publish; reasoning is not
         // streamed per-chunk the way the hint text is
         card.reasoning += chunk.delta
         return
       }
-      card.latencyMs ??= Date.now() - stream.startedAt
+      if (!chunk.delta) return
+      if (card.firstTextAt === undefined && hasAnswerText(card.text + chunk.delta)) {
+        card.firstTextAt = Date.now()
+        card.latencyMs = Math.max(0, card.firstTextAt - requestedAt)
+        card.speechLatencyMs = Math.max(
+          0,
+          card.firstTextAt - (last?.finalAt ?? last?.updatedAt ?? requestedAt)
+        )
+        // Publish timing before the chunk: the renderer applies this complete
+        // snapshot first, then makes the answer text available immediately.
+        publishHint(card)
+      }
       card.text += chunk.delta
       send('conversation-hint-chunk', card.id, chunk.delta)
     }
@@ -739,6 +764,7 @@ onTranscriptionEnd(() => {
   const open = openUtterance()
   if (!open) return
   open.final = true
+  open.finalAt = Date.now()
   publishUtterance(open)
   const waiting = waitingCard()
   if (waiting) void startHint(waiting, waiting.fromId, open.id, 'auto')
@@ -768,3 +794,31 @@ ipcMain.handle('conversation:get-snapshot', () => getSnapshot())
 ipcMain.handle('conversation:request-hint', () => requestHint())
 ipcMain.handle('conversation:stop-hints', () => stopHints())
 ipcMain.handle('conversation:clear', () => clearConversation())
+
+ipcMain.handle(
+  'conversation:first-visible',
+  (event, id: unknown, requestedAt: unknown, requestId: unknown) => {
+    const mainWindow = global.mainWindow
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents)
+      return false
+    // Windows soft-hide leaves isVisible() true while parking an opacity-zero window off-screen.
+    if (!mainWindow.isVisible() || mainWindow.isMinimized() || mainWindow.getOpacity() === 0)
+      return false
+    if (!Number.isSafeInteger(id) || !Number.isSafeInteger(requestId)) return false
+    if (typeof requestedAt !== 'number' || !Number.isFinite(requestedAt)) return false
+    const card = hints.find((hint) => hint.id === id)
+    if (
+      !card ||
+      card.requestId !== requestId ||
+      card.requestedAt !== requestedAt ||
+      card.firstTextAt === undefined ||
+      card.status === 'waiting' ||
+      !hasAnswerText(card.text)
+    )
+      return false
+    if (card.visibleLatencyMs !== undefined) return true
+    card.visibleLatencyMs = Math.max(0, Date.now() - requestedAt)
+    publishHint(card)
+    return true
+  }
+)
