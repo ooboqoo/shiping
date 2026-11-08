@@ -577,6 +577,10 @@ test('first-text classification agrees with Markdown rendering for empty prefixe
     ['$$', false],
     ['1. ', false],
     ['# ', false],
+    ['[answer]: https://example.com\n', false],
+    ['   [answer]: <https://example.com> "Reference"\n', false],
+    ['    [answer]: https://example.com\n', true],
+    ['```text\n[answer]: https://example.com\n```', true],
     ['```typescript\nconst n = 1', true],
     ['123', true],
     ['$$x+1$$', true],
@@ -596,4 +600,16 @@ test('first-text classification agrees with Markdown rendering for empty prefixe
     assert.equal(Boolean(visible), expected, `renderer: ${JSON.stringify(markdown)}`)
     assert.equal(hasAnswerText(markdown), expected, `timing: ${JSON.stringify(markdown)}`)
   }
+})
+
+test('reference definitions do not start timing before the visible answer body', (t) => {
+  const h = mainHarness(t)
+  h.sentence('解释一下缓存', true)
+  h.at(1100)
+  h.requests[0].onChunk({ kind: 'text', delta: '[answer]: https://example.com\n' })
+  assert.equal(h.snapshot().hints[0].firstTextAt, undefined)
+  h.at(1600)
+  h.requests[0].onChunk({ kind: 'text', delta: '\n实际结论' })
+  assert.equal(h.snapshot().hints[0].firstTextAt, 1600)
+  assert.equal(h.snapshot().hints[0].latencyMs, 600)
 })

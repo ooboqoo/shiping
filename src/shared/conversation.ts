@@ -65,7 +65,7 @@ export function countMeaningfulChars(text: string): number {
   return text.replace(/[\s\p{P}\p{S}]/gu, '').length
 }
 
-/** Inspect the cumulative answer: streaming fence info may span several deltas. */
+/** Common streamed Markdown prefixes, inspected cumulatively; not a full Markdown parser. */
 export function hasAnswerText(text: string): boolean {
   let fence: { marker: string; length: number } | undefined
   for (let line of text.split(/\r?\n/)) {
@@ -84,6 +84,14 @@ export function hasAnswerText(text: string): boolean {
       .replace(/^(?:[ \t]*(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$))+/, '')
       .replace(/^\[[ xX]\](?:[ \t]+|$)/, '')
       .replace(/^ {0,3}#{1,6}(?:[ \t]+|$)/, '')
+    // Single-line link definitions render no answer text. Four-space-indented
+    // definitions remain code, and fenced code was handled above.
+    if (
+      /^ {0,3}\[(?![ \t]*\])(?:\\.|[^\]\\\r\n]){1,999}\]:[ \t]*(?:<[^<>\r\n]*>|[^\s<>]+)(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/.test(
+        line
+      )
+    )
+      continue
     const opening = line.match(/^ {0,3}(`{3,}|~{3,})/)
     if (opening) {
       fence = { marker: opening[1][0], length: opening[1].length }
