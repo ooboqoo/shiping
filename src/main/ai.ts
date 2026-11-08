@@ -177,3 +177,37 @@ export function getPrewarmStream(abortSignal?: AbortSignal) {
 export function getMemoStream(system: string, prompt: string, abortSignal?: AbortSignal) {
   return streamWith('conversation', [{ role: 'user', content: prompt }], abortSignal, { system })
 }
+
+/** Optional per-round cache: no scene, library, external retrieval or hint instructions. */
+export async function summarizeConversation(text: string, signal: AbortSignal): Promise<string> {
+  const profile = getModeProfile('conversation')
+  const model = getModel(profile)
+  const transport = createThinkingOffFetch(profile.apiBaseURL, () => {}, apiFetch)
+  const response = await transport(
+    `${(profile.apiBaseURL.trim() || DEFAULT_API_BASE_URL).replace(/\/+$/, '')}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildRequestHeaders(profile.apiKey, profile.apiHeaders)
+      },
+      signal,
+      body: JSON.stringify({
+        model,
+        ...(/^(gpt-|o\d)/i.test(model) ? { max_completion_tokens: 400 } : { max_tokens: 400 }),
+        messages: [
+          {
+            role: 'system',
+            content:
+              '将这一轮问答压缩为简短中文摘要，保留问题、关键事实、数字、立场和未解决点。AI 建议不代表用户实际说过的话；我（实际回答）才是用户真实发言。分别标明实际回答和 AI 建议，不要把建议写成用户经历，不要回答问题，不超过 200 字。'
+          },
+          { role: 'user', content: text }
+        ]
+      })
+    }
+  )
+  if (!response.ok) throw new Error(`摘要请求失败（${response.status}）`)
+  const result = (await response.json()) as { choices?: { message?: { content?: unknown } }[] }
+  const content = result.choices?.[0]?.message?.content
+  return typeof content === 'string' ? content.trim() : ''
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FileText, Lightbulb, MessagesSquare, TriangleAlert, Mic } from 'lucide-react'
 import type { ConversationAudioMode } from '../../../../shared/conversation'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -37,6 +38,9 @@ export function ConversationSection({
   const {
     dashscopeApiKey,
     conversationHintMode,
+    conversationSummaryEnabled,
+    conversationSummaryRounds,
+    conversationSummaryBudget,
     conversationAudioMode,
     conversationMicrophoneDeviceId,
     conversationSilenceMs,
@@ -211,6 +215,70 @@ export function ConversationSection({
               </Select>
             </Field>
           </Advanced>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard Icon={MessagesSquare} title="补充问答摘要">
+        <div className="space-y-4">
+          <Field
+            label="附带最近问答的摘要"
+            note="默认关闭。开启后，空闲时使用对话模式的 AI 配置额外生成摘要，会产生后台调用费用。新问题直接出提示，不等待摘要；关闭后仍保留原有对话原文、最近提示和滚动备忘。"
+          >
+            <Switch
+              className="scale-y-90"
+              checked={conversationSummaryEnabled}
+              onCheckedChange={(checked) => updateSetting('conversationSummaryEnabled', checked)}
+            />
+          </Field>
+          {conversationSummaryEnabled && (
+            <>
+              <Field
+                label="最近问答轮数"
+                note="1–20 轮，默认 3 轮；只附带已生成的摘要。重写同一条提示仍算同一轮。"
+              >
+                <Select
+                  value={String(conversationSummaryRounds)}
+                  onValueChange={(value) =>
+                    updateSetting('conversationSummaryRounds', Number(value))
+                  }
+                >
+                  <SelectTrigger className="w-32 shrink-0 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
+                      <SelectItem key={n} value={String(n)}>
+                        {n} 轮
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field
+                label="补充摘要预算"
+                note="100–4000 个估算 token，默认 1000；只限制新增摘要，不会缩短当前问题、原文或重写时的上一版提示。与滚动备忘和最近提示可能有内容重复。"
+              >
+                <Input
+                  className="w-32 shrink-0 bg-white"
+                  type="number"
+                  min={100}
+                  max={4000}
+                  step={100}
+                  key={conversationSummaryBudget}
+                  defaultValue={conversationSummaryBudget}
+                  onBlur={(event) => {
+                    const budget = Math.min(
+                      4000,
+                      Math.max(100, Math.round(Number(event.target.value) || 100))
+                    )
+                    event.target.value = String(budget)
+                    updateSetting('conversationSummaryBudget', budget)
+                  }}
+                  aria-label="补充摘要预算（估算 token）"
+                />
+              </Field>
+            </>
+          )}
         </div>
       </SettingsCard>
 

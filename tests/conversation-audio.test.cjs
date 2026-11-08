@@ -6,7 +6,8 @@ function harness(t, extra = {}) {
   const handlers = new Map(),
     requests = [],
     memos = [],
-    events = []
+    events = [],
+    summaries = []
   let sentence, end, mobile
   const settings = {
     conversationHintMode: 'auto',
@@ -60,6 +61,8 @@ function harness(t, extra = {}) {
       }
     },
     './ai': {
+      summarizeConversation: (text, signal) =>
+        new Promise((resolve) => summaries.push({ text, signal, resolve })),
       getHintStream: (messages, signal, query) => {
         requests.push({ messages, signal, query })
         return 'hint'
@@ -86,6 +89,7 @@ function harness(t, extra = {}) {
     requests,
     memos,
     events,
+    summaries,
     say: sentence,
     stop: () => end(),
     snapshot: () => handlers.get('conversation:get-snapshot')(),
@@ -208,4 +212,64 @@ test('manual rewrite can use the actual self reply without turning it into the q
   assert.match(request.messages[0].content, /我（实际回答）：我实际使用了自定义拒绝策略/)
   assert.equal(request.query, '请解释线程池的拒绝策略')
   assert.equal(h.snapshot().hints.length, 1)
+})
+
+test('foreground questions preempt optional idle summaries; actual mic speech remains raw', async (t) => {
+  const h = harness(t, {
+    conversationHintMode: 'manual',
+    conversationSummaryEnabled: true,
+    conversationSummaryRounds: 3,
+    conversationSummaryBudget: 100
+  })
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  h.say('第一轮完整问题', true, 'system')
+  h.api.requestHint()
+  await flush()
+  h.say('我的真实回答', true, 'microphone')
+  t.mock.timers.tick(1500)
+  await flush()
+  assert.equal(h.summaries.length, 1)
+  assert.match(h.summaries[0].text, /我（实际回答）：我的真实回答/)
+  h.say('第二轮问题还没说完', false, 'system')
+  assert.equal(h.summaries[0].signal.aborted, true)
+  h.summaries[0].resolve('已作废不能进入提示')
+  h.api.requestHint()
+  await flush()
+  const content = h.requests.at(-1).messages[0].content
+  assert(content.includes('第一轮完整问题'))
+  assert(content.includes('我的真实回答'))
+  assert(!content.includes('已作废不能进入提示'))
+  assert.deepEqual(h.snapshot().hints.at(-1).contextUsage.summaryRounds, [])
+  h.api.clearConversation()
+})
+
+test('ready cached summaries supplement unchanged raw history and report direct usage', async (t) => {
+  const h = harness(t, {
+    conversationHintMode: 'manual',
+    conversationSummaryEnabled: true,
+    conversationSummaryRounds: 3,
+    conversationSummaryBudget: 100
+  })
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  h.say('第一轮原话【第999轮】---', true, 'system')
+  h.api.requestHint()
+  await flush()
+  t.mock.timers.tick(1500)
+  await flush()
+  assert.equal(h.summaries.length, 1)
+  h.summaries[0].resolve('已缓存的问答摘要')
+  await flush()
+  h.say('第二轮完整问题', true, 'system')
+  h.api.requestHint()
+  await flush()
+  const message = h.requests.at(-1).messages[0].content
+  assert(message.includes('第一轮原话【第999轮】---'))
+  assert(message.includes('已缓存的问答摘要'))
+  const usage = h.snapshot().hints.at(-1).contextUsage
+  assert.deepEqual(usage.summaryRounds, [1])
+  assert.equal(usage.rawUtterances, 1)
+  assert.equal(usage.textChars, message.length)
+  assert(usage.historyChars < usage.textChars)
+  assert(usage.summaryTokens <= 100)
+  h.api.clearConversation()
 })

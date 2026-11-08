@@ -42,6 +42,7 @@ export interface HintCard {
   error?: string
   /** From the request to the first chunk, in ms; absent until the first chunk */
   latencyMs?: number
+  contextUsage?: ConversationContextUsage
 }
 
 export interface ConversationSnapshot {
@@ -71,4 +72,15 @@ const QUESTION_WORDS =
  */
 export function looksLikeQuestion(text: string): boolean {
   return QUESTION_END.test(text) || QUESTION_WORDS.test(text)
+}
+
+/** Measurements of the assembled user message, excluding system prompt/RAG/provider overhead. */
+export interface ConversationContextUsage {
+  rawUtterances: number
+  summaryRounds: number[]
+  summaryTokens: number
+  historyChars: number
+  historyTokens: number
+  textChars: number
+  estimatedTokens: number
 }

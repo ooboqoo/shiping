@@ -189,6 +189,14 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
           {card.status === 'stopped' && ' · 已停止'}
         </span>
       </div>
+      {card.contextUsage && (
+        <p className="mb-1 text-[10px] text-app-muted-fg">
+          历史 {card.contextUsage.rawUtterances} 句原文 · {card.contextUsage.historyChars} 字符 / 约{' '}
+          {card.contextUsage.historyTokens} token
+          {card.contextUsage.summaryRounds.length > 0 &&
+            ` · 补充第 ${card.contextUsage.summaryRounds.join('、')} 轮摘要（约 ${card.contextUsage.summaryTokens} token）`}
+        </p>
+      )}
       {card.status === 'waiting' ? (
         <p className="animate-pulse text-sm text-app-muted-fg">对方还在说，说完后重新生成…</p>
       ) : card.status === 'streaming' && !card.text ? (
