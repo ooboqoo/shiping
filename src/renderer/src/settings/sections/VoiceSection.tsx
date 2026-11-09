@@ -56,8 +56,8 @@ export function VoiceSection() {
         </Field>
 
         <Field
-          label="对方音源（截图模式也使用此输入）"
-          note="默认捕获系统音频；也可选择虚拟音频线等输入设备接收对方声音。这里的输入始终作为对方，自己的麦克风请在「对话模式」单独设置。"
+          label="对方音源"
+          note="默认捕获系统音频，即会议里对方的声音；也可以选虚拟声卡等输入设备。截图模式的语音转录也用它。自己的麦克风在「设置 → 对话模式」单独选"
         >
           <Select
             value={audioInputDeviceId || 'system'}
@@ -86,7 +86,7 @@ export function VoiceSection() {
         </Field>
 
         <Advanced defaultOpen={!!audioOutputDeviceId}>
-          <Field label="音频处理输出设备" note="保留已选输出设备；转录音频不会回放到扬声器">
+          <Field label="音频输出设备" note="识别时不播放声音，这一项不影响识别">
             <Select
               value={audioOutputDeviceId || 'default'}
               onValueChange={(val) =>

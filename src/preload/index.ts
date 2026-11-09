@@ -8,7 +8,7 @@ import type { RegionPickerData } from '../main/region-picker'
 import type { Shortcut } from '../main/shortcuts'
 import type { CaptureRegion, RegionRect } from '../shared/capture-region'
 import type { TranscriptionOptions } from '../main/transcription'
-import type { ConversationSnapshot, HintCard, Utterance } from '../shared/conversation'
+import type { AudioSource, ConversationSnapshot, HintCard, Utterance } from '../shared/conversation'
 import type { KnowledgeDoc, KnowledgeImportResult, KnowledgePatch } from '../shared/knowledge'
 import type { ToolbarActionName, ToolbarButtons } from '../shared/toolbar'
 import type { AvailableUpdate } from '../shared/update'
@@ -452,10 +452,8 @@ const api = {
   startTranscription: (apiKey: string, options?: TranscriptionOptions) =>
     ipcRenderer.invoke('start-transcription', apiKey, options),
   stopTranscription: () => ipcRenderer.invoke('stop-transcription'),
-  sendTranscriptionAudioChunk: (
-    chunk: ArrayBuffer,
-    source?: import('../shared/conversation').AudioSource
-  ) => ipcRenderer.send('transcription-audio-chunk', chunk, source),
+  sendTranscriptionAudioChunk: (chunk: ArrayBuffer, source?: AudioSource) =>
+    ipcRenderer.send('transcription-audio-chunk', chunk, source),
   getTranscriptionText: () => ipcRenderer.invoke('get-transcription-text') as Promise<string>,
 
   onToggleTranscription: (callback: () => void) => {

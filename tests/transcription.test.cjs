@@ -186,6 +186,20 @@ test('ASR failure notifies existing hooks once and closes every source', async (
   assert.equal(h.api.isTranscriptionRunning('conversation'), false)
 })
 
+test('a single-source failure carries the ASR message without a source label', async () => {
+  const h = harness(),
+    errors = []
+  h.api.onTranscriptionError((message) => errors.push(message))
+  await h.handlers.get('start-transcription')(null, 'test', { purpose: 'screenshot' })
+  h.sockets[0].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({ header: { event: 'task-failed', error_message: 'InvalidApiKey' } })
+    )
+  )
+  assert.deepEqual(errors, ['InvalidApiKey'])
+})
+
 test('a stalled finish is bounded by 700ms and concurrent stops share the drain', async (t) => {
   const h = harness(true)
   await h.handlers.get('start-transcription')(null, 'test', {

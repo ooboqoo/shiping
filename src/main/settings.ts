@@ -162,9 +162,6 @@ export const settings = {
   conversationPrompt: '',
   /** 对话模式: hint on every finished sentence (`auto`) or only on the shortcut */
   conversationHintMode: 'auto' as HintMode,
-  /** Optional own speech capture. Existing selected input stays the other side. */
-  conversationAudioMode: 'system' as import('../shared/conversation').ConversationAudioMode,
-  conversationMicrophoneDeviceId: '',
   /** 对话模式: silence (ms) that ends a sentence in the recogniser */
   conversationSilenceMs: 800,
   /** 对话模式: a finished sentence shorter than this triggers no automatic hint */

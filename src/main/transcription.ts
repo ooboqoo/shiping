@@ -83,7 +83,11 @@ function fail(session: Session, error: Error) {
     session.resolveStop?.()
     return
   }
-  const message = `${session.source === 'microphone' ? '麦克风' : '对方音源'}：${error.message}`
+  // Name the source only when two are running; 截图模式 and single-source listening have one
+  const message =
+    sessions.size > 1
+      ? `${session.source === 'microphone' ? '麦克风' : '对方音源'}：${error.message}`
+      : error.message
   send('transcription-error', message)
   errorListeners.forEach((listener) => listener(message))
   cleanup()

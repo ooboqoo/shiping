@@ -21,7 +21,7 @@ import {
   type AppMode,
   type ReasoningEffort
 } from '../../../../shared/api-profile'
-import type { HintMode } from '../../../../shared/conversation'
+import type { ConversationAudioMode, HintMode } from '../../../../shared/conversation'
 import { DEFAULT_PROXY, normalizeProxySettings, type ProxySettings } from '../../../../shared/proxy'
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE,
@@ -343,7 +343,9 @@ interface Settings {
   lastMode: AppMode
   /** 对话模式: hint as soon as the other side finishes a sentence, or only on the shortcut */
   conversationHintMode: HintMode
-  conversationAudioMode: import('../../../../shared/conversation').ConversationAudioMode
+  /** 对话模式: the other side only (「设置 → 语音」's input), plus or instead of the user's own microphone */
+  conversationAudioMode: ConversationAudioMode
+  /** 对话模式: the user's own microphone; blank = the system default */
   conversationMicrophoneDeviceId: string
   /** 对话模式: silence (ms) after which the recogniser ends a sentence; shorter hints sooner */
   conversationSilenceMs: number
