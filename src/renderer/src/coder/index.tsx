@@ -25,8 +25,11 @@ export default function CoderPage() {
 
   // 对话模式 keeps listening while its user visits the settings; coming here
   // instead ends that conversation's recognition, whose sentences would
-  // otherwise never reach this page's transcript
+  // otherwise never reach this page's transcript. That stop drains for up to
+  // 700ms, so the flag goes at once: a toggle meanwhile must start this page's
+  // transcription (which waits for the drain), not stop the conversation again
   useEffect(() => {
+    useTranscriptionStore.getState().setIsTranscribing(false)
     void stopListening()
   }, [])
 

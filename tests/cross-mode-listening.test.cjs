@@ -4,8 +4,12 @@ const { EventEmitter } = require('node:events')
 const React = require('react')
 const load = require('./load-source.cjs')
 
-for (const cancel of [false, true])
-  test(`switching from partly started dual ASR ${cancel ? 'can cancel a queued screenshot start before retrying' : 'drains before opening screenshot capture'}`, async (t) => {
+for (const [established, cancel] of [
+  [false, false],
+  [false, true],
+  [true, false]
+])
+  test(`switching from ${established ? 'listening' : 'partly started'} dual ASR ${cancel ? 'can cancel a queued screenshot start before retrying' : 'drains before opening screenshot capture'}`, async (t) => {
     t.mock.method(console, 'log', () => undefined)
     t.mock.timers.enable({ apis: ['setTimeout'] })
     const noop = () => undefined
@@ -27,8 +31,9 @@ for (const cancel of [false, true])
       send(data) {
         if (typeof data !== 'string') return
         const action = JSON.parse(data).header.action
-        // The first source starts, the second stays pending; finish never answers.
-        if (action === 'run-task' && this.index !== 1)
+        // The first source starts, the second stays pending unless the conversation
+        // is `established`; finish never answers, so a stop drains for the full 700ms.
+        if (action === 'run-task' && (established || this.index !== 1))
           queueMicrotask(() =>
             this.emit('message', Buffer.from(JSON.stringify({ header: { event: 'task-started' } })))
           )
@@ -183,7 +188,8 @@ for (const cancel of [false, true])
     const flush = () => new Promise((r) => setImmediate(r))
     await flush()
     assert.equal(sockets.length, 2)
-    assert.equal(state.isTranscribing, false)
+    // Listening: a toggle during the drain must still read as a start
+    assert.equal(state.isTranscribing, established)
     assert.equal(streams.length, 2)
     effects = []
     for (const name of [
