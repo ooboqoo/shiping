@@ -185,8 +185,13 @@
   cursor: nwse-resize;
 }
 
-/* The toolbar window holds nothing but the toolbar, so it must never scroll */
-body:has(.overlay-toolbar-root) {
+/*
+ * No window ever scrolls as a whole: each page scrolls inside its own panels.
+ * The page's own scrollbar is drawn opaque and outside the body, so neither
+ * the transparent window nor the opacity setting reaches it - a page a few
+ * pixels too tall showed a solid bar down the right edge (#140)
+ */
+html {
   overflow: hidden;
 }
 

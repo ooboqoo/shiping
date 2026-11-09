@@ -32,8 +32,11 @@ export function ConversationStatusBar() {
       />
     )
 
+  // One line whatever the width: wrapped, the labels ran past the bar's fixed
+  // height and the bottom of the window (#140). A window too narrow for them
+  // all clips the last ones instead, the click-through note giving way first
   return (
-    <div className="flex h-8 shrink-0 items-center gap-3 border-t border-app-border bg-app-status px-3 text-xs text-app-status-fg select-none">
+    <div className="flex h-8 shrink-0 items-center gap-3 overflow-hidden border-t border-app-border bg-app-status px-3 text-xs whitespace-nowrap text-app-status-fg select-none">
       <button className="flex items-center gap-1 cursor-pointer" onClick={toggleListening}>
         {isTranscribing ? <Mic className="size-3.5" /> : <MicOff className="size-3.5 opacity-55" />}
         {isTranscribing ? '停止监听' : '开始监听'}
@@ -81,9 +84,9 @@ export function ConversationStatusBar() {
       )}
 
       {ignoreMouse && (
-        <span className="ml-auto flex items-center gap-1">
-          <PointerOff className="size-3.5" />
-          取消鼠标穿透
+        <span className="ml-auto flex min-w-0 items-center gap-1">
+          <PointerOff className="size-3.5 shrink-0" />
+          <span className="truncate">取消鼠标穿透</span>
           {key('ignoreOrEnableMouse')}
         </span>
       )}
