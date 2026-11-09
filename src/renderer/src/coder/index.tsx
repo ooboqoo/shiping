@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { stopListening } from '@/conversation/listening'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useTranscriptionStore } from '@/lib/store/transcription'
-import { useSolutionStore } from '@/lib/store/solution'
+import { useSolutionStore, VOICE_ERROR_TITLE } from '@/lib/store/solution'
 import { describeCaptureError, startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
 import { useModePage } from '@/lib/use-mode-page'
 
@@ -43,7 +43,7 @@ export default function CoderPage() {
         if (request === operation.current) setIsTranscribing(false)
       } else {
         if (!dashscopeApiKey) {
-          setErrorMessage('请先在设置中配置百炼平台 API Key')
+          setErrorMessage('请先在设置中配置百炼平台 API Key', VOICE_ERROR_TITLE)
           return
         }
         starting.current = true
@@ -70,7 +70,8 @@ export default function CoderPage() {
               ? describeCaptureError('启动录音失败', err)
               : err instanceof Error
                 ? err.message
-                : String(err)
+                : String(err),
+            VOICE_ERROR_TITLE
           )
         } finally {
           if (request === operation.current) starting.current = false
@@ -89,7 +90,7 @@ export default function CoderPage() {
       setTranscriptionText(data.text)
     })
     window.api.onTranscriptionError((message) => {
-      setErrorMessage(message)
+      setErrorMessage(message, VOICE_ERROR_TITLE)
       setIsTranscribing(false)
       stopAudioCapture()
     })
