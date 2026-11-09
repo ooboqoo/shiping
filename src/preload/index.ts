@@ -449,8 +449,13 @@ const api = {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 
   // Transcription
-  startTranscription: (apiKey: string, options?: TranscriptionOptions) =>
-    ipcRenderer.invoke('start-transcription', apiKey, options),
+  // Main rejects with words meant for the user; Electron prefixes them with
+  // `Error invoking remote method '…': Error: `, which is dropped again here
+  startTranscription: (apiKey: string, options?: TranscriptionOptions): Promise<void> =>
+    ipcRenderer.invoke('start-transcription', apiKey, options).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, ''))
+    }),
   stopTranscription: () => ipcRenderer.invoke('stop-transcription'),
   sendTranscriptionAudioChunk: (chunk: ArrayBuffer, source?: AudioSource) =>
     ipcRenderer.send('transcription-audio-chunk', chunk, source),

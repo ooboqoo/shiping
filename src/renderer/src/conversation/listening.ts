@@ -51,7 +51,9 @@ export async function startListening(): Promise<void> {
     setErrorMessage(
       phase === 'capture'
         ? describeCaptureError('启动录音失败', err)
-        : `启动语音识别失败（${err instanceof Error ? err.message : String(err)}）`
+        : err instanceof Error
+          ? err.message
+          : String(err)
     )
   } finally {
     if (request === operation) starting = false

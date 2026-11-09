@@ -180,24 +180,54 @@ test('ASR failure notifies existing hooks once and closes every source', async (
     )
   )
   assert.equal(errors.length, 1)
-  assert.match(errors[0], /麦克风.*InvalidApiKey/)
+  assert.equal(errors[0], '百炼平台 API Key 无效，请到「设置 → 语音」重新填写（InvalidApiKey）')
   assert.equal(ends.length, 1)
   assert(h.sockets.every((s) => s.readyState === 3))
   assert.equal(h.api.isTranscriptionRunning('conversation'), false)
 })
 
-test('a single-source failure carries the ASR message without a source label', async () => {
-  const h = harness(),
-    errors = []
-  h.api.onTranscriptionError((message) => errors.push(message))
-  await h.handlers.get('start-transcription')(null, 'test', { purpose: 'screenshot' })
-  h.sockets[0].emit(
-    'message',
+test('failures are worded for the user, naming the source only for its own failure in dual mode', async () => {
+  const fails = (code, message) =>
     Buffer.from(
-      JSON.stringify({ header: { event: 'task-failed', error_message: 'InvalidApiKey' } })
+      JSON.stringify({
+        header: { event: 'task-failed', error_code: code, error_message: message }
+      })
     )
+  const run = async (sources, socket, data) => {
+    const h = harness(),
+      errors = []
+    h.api.onTranscriptionError((message) => errors.push(message))
+    await h.handlers.get('start-transcription')(null, 'test', {
+      purpose: sources ? 'conversation' : 'screenshot',
+      sources
+    })
+    if (data instanceof Error) h.sockets[socket].emit('error', data)
+    else h.sockets[socket].emit('message', data)
+    return errors
+  }
+  assert.deepEqual(await run(undefined, 0, fails('InvalidApiKey', 'Invalid API-key provided.')), [
+    '百炼平台 API Key 无效，请到「设置 → 语音」重新填写（InvalidApiKey）'
+  ])
+  assert.deepEqual(await run(undefined, 0, new Error('Unexpected server response: 401')), [
+    '百炼平台 API Key 无效，请到「设置 → 语音」重新填写（HTTP 401）'
+  ])
+  assert.deepEqual(
+    await run(
+      undefined,
+      0,
+      Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })
+    ),
+    ['连不上百炼平台，请检查网络（ENOTFOUND）']
   )
-  assert.deepEqual(errors, ['InvalidApiKey'])
+  assert.deepEqual(await run(['system', 'microphone'], 1, fails('Arrearage', 'Access denied')), [
+    '百炼平台拒绝了语音识别，请到百炼控制台确认账户没有欠费、能使用 Fun-ASR 实时语音识别（Arrearage）'
+  ])
+  assert.deepEqual(await run(['system', 'microphone'], 1, fails('InvalidParameter', 'bad audio')), [
+    '麦克风的语音识别失败：bad audio（InvalidParameter）'
+  ])
+  assert.deepEqual(await run(undefined, 0, fails('InvalidParameter', 'bad audio')), [
+    '语音识别失败：bad audio（InvalidParameter）'
+  ])
 })
 
 test('a stalled finish is bounded by 700ms and concurrent stops share the drain', async (t) => {
@@ -230,8 +260,32 @@ test('one source rejecting startup closes the other and preserves the ASR error'
       purpose: 'conversation',
       sources: ['system', 'microphone']
     }),
-    /InvalidApiKey/
+    /百炼平台 API Key 无效.*InvalidApiKey/
   )
   assert(h.sockets.every((s) => s.readyState === 3))
   assert.equal(h.messages.filter((x) => x[0] === 'transcription-stopped').length, 1)
+})
+
+test('the preload drops the prefix Electron puts on a rejected start', async (t) => {
+  // Outside Electron `process.contextIsolated` is unset, so the preload sets window.api
+  const previous = global.window
+  global.window = {}
+  t.after(() => (global.window = previous))
+  require('./load-source.cjs')('src/preload/index.ts', {
+    electron: {
+      contextBridge: {},
+      ipcRenderer: {
+        invoke: async () => {
+          throw new Error(
+            "Error invoking remote method 'start-transcription': Error: 百炼平台 API Key 无效（HTTP 401）"
+          )
+        }
+      },
+      webUtils: {}
+    },
+    '@electron-toolkit/preload': { electronAPI: {} }
+  })
+  await assert.rejects(global.window.api.startTranscription('key'), {
+    message: '百炼平台 API Key 无效（HTTP 401）'
+  })
 })

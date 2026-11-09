@@ -76,18 +76,62 @@ function reportStopped() {
   send('transcription-stopped')
   endListeners.forEach((listener) => listener())
 }
-function fail(session: Session, error: Error) {
+/** A failure from `ws` / Node (`code` like `ENOTFOUND`), or a `task-failed` event's code and message */
+type AsrFailure = Error & { code?: string }
+
+const NETWORK_CODES =
+  /^(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EPIPE)$|CERT|SSL|TLS/
+
+/**
+ * A failure in words the user can act on, with the recogniser's own code (or
+ * HTTP status) in brackets for anyone searching it. `shared` failures (the key,
+ * the account, the network) hit every source alike, so they name none; the
+ * others start with 语音识别, which `fail()` may prefix with the source
+ */
+function describeFailure(error: AsrFailure): { message: string; shared: boolean } {
+  const status = /Unexpected server response: (\d+)/.exec(error.message)?.[1]
+  const code = error.code ?? (status ? `HTTP ${status}` : undefined)
+  const said = `${error.code ?? ''} ${error.message}`
+  const detail = `（${code ?? error.message}）`
+  if (status === '401' || /InvalidApiKey|Invalid API-?key/i.test(said))
+    return { message: `百炼平台 API Key 无效，请到「设置 → 语音」重新填写${detail}`, shared: true }
+  if (status === '403' || /Arrearage|AccessDenied|good standing/i.test(said))
+    return {
+      message: `百炼平台拒绝了语音识别，请到百炼控制台确认账户没有欠费、能使用 Fun-ASR 实时语音识别${detail}`,
+      shared: true
+    }
+  if (status === '429' || /Throttling/i.test(said))
+    return { message: `百炼平台的语音识别请求太频繁，请稍后再开始监听${detail}`, shared: true }
+  if (error.code === 'ETIMEDOUT')
+    return { message: `连接百炼平台超时，请检查网络${detail}`, shared: true }
+  if (error.code && NETWORK_CODES.test(error.code))
+    return { message: `连不上百炼平台，请检查网络${detail}`, shared: true }
+  if (status) return { message: `百炼平台语音识别连接失败${detail}`, shared: true }
+  return {
+    message: `语音识别失败：${error.message}${error.code ? `（${error.code}）` : ''}`,
+    shared: false
+  }
+}
+
+/**
+ * `error` is a recogniser / connection failure to describe, or a message of
+ * ours (starting with 语音识别) as it is
+ */
+function fail(session: Session, error: AsrFailure | string) {
   if (sessions.get(session.source) !== session) return
-  session.rejectStart(error)
+  const { message: text, shared } =
+    typeof error === 'string' ? { message: error, shared: false } : describeFailure(error)
+  // Name the source only when two are running; 截图模式 and single-source listening have one
+  const message =
+    sessions.size > 1 && !shared
+      ? `${session.source === 'microphone' ? '麦克风' : '对方音源'}的${text}`
+      : text
+  // The same words for a start still waiting on it (the page shows that one)
+  session.rejectStart(new Error(message))
   if (stopping) {
     session.resolveStop?.()
     return
   }
-  // Name the source only when two are running; 截图模式 and single-source listening have one
-  const message =
-    sessions.size > 1
-      ? `${session.source === 'microphone' ? '麦克风' : '对方音源'}：${error.message}`
-      : error.message
   send('transcription-error', message)
   errorListeners.forEach((listener) => listener(message))
   cleanup()
@@ -109,7 +153,10 @@ async function startTranscription(apiKey: string, options: TranscriptionOptions 
         (source) =>
           new Promise<void>((resolve, reject) => {
             const socket = new WebSocket(WS_URL, { headers: { Authorization: `bearer ${apiKey}` } })
-            const timeout = setTimeout(() => fail(session, new Error('语音识别连接超时')), 8000)
+            const timeout = setTimeout(
+              () => fail(session, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })),
+              8000
+            )
             const session: Session = {
               socket,
               taskId: randomUUID(),
@@ -179,10 +226,15 @@ async function startTranscription(apiKey: string, options: TranscriptionOptions 
                     send('transcription-text', { text: getTranscriptionText(), isPartial: !final })
                   }
                 } else if (event === 'task-failed')
-                  fail(session, new Error(message.header?.error_message || '语音识别失败'))
+                  fail(
+                    session,
+                    Object.assign(new Error(message.header?.error_message || '未知错误'), {
+                      code: message.header?.error_code || undefined
+                    })
+                  )
                 else if (event === 'task-finished') {
                   if (stopping) session.resolveStop?.()
-                  else fail(session, new Error('语音识别连接已结束，请重新开始监听'))
+                  else fail(session, '语音识别连接已结束，请重新开始监听')
                 }
               } catch (error) {
                 console.error('Failed to parse transcription message:', error)
@@ -191,7 +243,7 @@ async function startTranscription(apiKey: string, options: TranscriptionOptions 
             socket.on('error', (error) => fail(session, error))
             socket.on('close', () => {
               if (stopping) session.resolveStop?.()
-              else fail(session, new Error('语音识别连接中断，请重新开始监听'))
+              else fail(session, '语音识别连接中断，请重新开始监听')
             })
           })
       )
