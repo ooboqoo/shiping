@@ -349,6 +349,17 @@
 
   function renderSaid(utterances) {
     if (utterances.length === 0) return ''
+    if (utterances.some((u) => u.source === 'microphone')) {
+      return utterances
+        .map((u) => {
+          const who = u.source === 'microphone' ? '我（实际回答）' : '对方'
+          const line = u.final
+            ? `<p>${escapeHtml(u.text)}</p>`
+            : `<p class="live">${escapeHtml(u.text)}<span class="typing"><i></i><i></i><i></i></span></p>`
+          return `<div class="said"><div class="who">${who}</div><div class="bubble">${line}</div></div>`
+        })
+        .join('')
+    }
     const lines = utterances.map((u) =>
       u.final
         ? `<p>${escapeHtml(u.text)}</p>`

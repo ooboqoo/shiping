@@ -5,11 +5,17 @@
 /** `auto` asks for a hint as soon as the other side finishes a sentence; `manual` waits for the shortcut */
 export type HintMode = 'auto' | 'manual'
 
+/** Logical speaker: a selected virtual input still belongs to the other side. */
+export type AudioSource = 'system' | 'microphone'
+export type ConversationAudioMode = AudioSource | 'dual'
+
 /** One sentence of the other side, as the speech recogniser reports it */
 export interface Utterance {
   /** Increasing from 1 within a conversation */
   id: number
   text: string
+  /** Absent on legacy records: the other side. */
+  source?: AudioSource
   /** False while the recogniser is still revising it */
   final: boolean
 }

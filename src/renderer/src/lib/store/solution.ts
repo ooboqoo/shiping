@@ -17,6 +17,10 @@ export interface RoundUi {
   pinned: boolean
 }
 
+/** The error banner's headings: an AI request failed, or 截图模式's 语音转录 did */
+export const AI_ERROR_TITLE = 'API 调用失败'
+export const VOICE_ERROR_TITLE = '语音转录失败'
+
 interface SolutionState {
   isLoading: boolean
   solutionChunks: string[]
@@ -47,6 +51,8 @@ interface SolutionState {
   /** Every screenshot sent to the AI, which can exceed the thumbnails kept around */
   screenshotTotal: number
   errorMessage: string | null
+  /** The banner's heading: what failed (an AI request by default, or 语音转录) */
+  errorTitle: string
   /** How long the last request took, in ms; null until one has finished */
   durationMs: number | null
 }
@@ -64,7 +70,8 @@ interface SolutionStore extends SolutionState {
   setSolutionChunks: (chunks: string[]) => void
   setScreenshotData: (data: string | null) => void
   setRecentScreenshots: (screenshots: string[], total: number) => void
-  setErrorMessage: (message: string | null) => void
+  /** `title` heads the banner, `AI_ERROR_TITLE` when absent */
+  setErrorMessage: (message: string | null, title?: string) => void
   setDurationMs: (ms: number | null) => void
   clearSolution: () => void
   resetState: () => void
@@ -80,6 +87,7 @@ const defaultState: SolutionState = {
   recentScreenshots: [],
   screenshotTotal: 0,
   errorMessage: null,
+  errorTitle: AI_ERROR_TITLE,
   durationMs: null
 }
 
@@ -129,8 +137,8 @@ export const useSolutionStore = create<SolutionStore>()((set) => ({
   setRecentScreenshots: (screenshots, total) => {
     set({ recentScreenshots: screenshots, screenshotTotal: total })
   },
-  setErrorMessage: (message) => {
-    set({ errorMessage: message })
+  setErrorMessage: (message, title = AI_ERROR_TITLE) => {
+    set({ errorMessage: message, errorTitle: title })
   },
   setDurationMs: (ms) => {
     set({ durationMs: ms })

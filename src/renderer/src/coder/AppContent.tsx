@@ -19,6 +19,7 @@ export function AppContent() {
     liveRound,
     roundUi,
     errorMessage,
+    errorTitle,
     setScreenshotData,
     setRecentScreenshots,
     setIsLoading,
@@ -239,7 +240,7 @@ export function AppContent() {
             />
           </svg>
           <div className="flex-1 min-w-0">
-            <p className="text-red-400 font-medium text-sm">API 调用失败</p>
+            <p className="text-red-400 font-medium text-sm">{errorTitle}</p>
             <p className="text-red-300/80 text-sm mt-0.5 break-words">{errorMessage}</p>
           </div>
           <button

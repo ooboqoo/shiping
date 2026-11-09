@@ -1,0 +1,291 @@
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const { EventEmitter } = require('node:events')
+const createLoader = require('./load-source.cjs').createLoader
+
+test('canceling real CONNECTING sockets safely handles the ws close error', () => {
+  const { spawnSync } = require('node:child_process')
+  const path = require('node:path')
+  // An unhandled socket error must fail a child, not terminate this test runner.
+  const result = spawnSync(
+    process.execPath,
+    [
+      '-e',
+      `
+      const assert = require('node:assert/strict')
+      const http = require('node:http')
+      const WebSocket = require('ws')
+      const createLoader = require('./tests/load-source.cjs').createLoader
+      ;(async () => {
+        const connections = new Set(), handlers = new Map()
+        let bothConnected
+        const connected = new Promise(resolve => { bothConnected = resolve })
+        const server = http.createServer()
+        server.on('upgrade', (_request, socket) => {
+          connections.add(socket)
+          if (connections.size === 2) bothConnected()
+        })
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+        class Socket extends WebSocket {
+          constructor() { super('ws://127.0.0.1:' + server.address().port) }
+        }
+        const api = createLoader({
+          electron: { ipcMain: {
+            handle: (key, handler) => handlers.set(key, handler),
+            on: (key, handler) => handlers.set(key, handler)
+          } },
+          ws: Socket
+        })('src/main/transcription.ts')
+        const starting = handlers.get('start-transcription')(null, 'test', {
+          purpose: 'conversation', sources: ['system', 'microphone']
+        }).then(() => { throw new Error('canceled startup unexpectedly succeeded') }, error => error)
+        await connected
+        await handlers.get('stop-transcription')()
+        assert((await starting) instanceof Error)
+        await new Promise(resolve => setTimeout(resolve, 30))
+        assert.equal(api.isTranscriptionRunning('conversation'), false)
+        for (const socket of connections) socket.destroy()
+        await new Promise(resolve => server.close(resolve))
+      })().catch(error => { console.error(error); process.exit(1) })
+      `
+    ],
+    { cwd: path.resolve(__dirname, '..'), encoding: 'utf8', timeout: 5000, windowsHide: true }
+  )
+  assert.equal(result.error, undefined)
+  assert.equal(result.status, 0, result.stderr)
+})
+
+function harness(delayStop = false) {
+  const sockets = [],
+    handlers = new Map(),
+    messages = []
+  class Socket extends EventEmitter {
+    static OPEN = 1
+    static CONNECTING = 0
+    readyState = 1
+    sent = []
+    constructor() {
+      super()
+      sockets.push(this)
+      queueMicrotask(() => this.emit('open'))
+    }
+    send(data) {
+      this.sent.push(data)
+      if (typeof data === 'string') {
+        const m = JSON.parse(data)
+        if (m.header.action === 'run-task')
+          queueMicrotask(() =>
+            this.emit('message', Buffer.from(JSON.stringify({ header: { event: 'task-started' } })))
+          )
+        if (m.header.action === 'finish-task' && !delayStop)
+          queueMicrotask(() => {
+            this.emit(
+              'message',
+              Buffer.from(
+                JSON.stringify({
+                  header: { event: 'result-generated' },
+                  payload: { output: { sentence: { text: '尾句', sentence_end: true } } }
+                })
+              )
+            )
+            this.emit(
+              'message',
+              Buffer.from(JSON.stringify({ header: { event: 'task-finished' } }))
+            )
+          })
+      }
+    }
+    close() {
+      this.readyState = 3
+      this.emit('close')
+    }
+  }
+  global.mainWindow = {
+    isDestroyed: () => false,
+    webContents: { send: (...v) => messages.push(v) }
+  }
+  const api = createLoader({
+    electron: {
+      ipcMain: { handle: (k, v) => handlers.set(k, v), on: (k, v) => handlers.set(k, v) }
+    },
+    ws: Socket
+  })('src/main/transcription.ts')
+  return { api, sockets, handlers, messages }
+}
+test('two independent sessions tag transcripts, route PCM and drain final sentences on stop', async () => {
+  const h = harness(),
+    sentences = []
+  h.api.onConversationSentence((...v) => sentences.push(v))
+  await h.handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system', 'microphone']
+  })
+  assert.equal(h.sockets.length, 2)
+  h.handlers.get('transcription-audio-chunk')(null, new Uint8Array([1, 2]).buffer, 'microphone')
+  assert(!h.sockets[0].sent.some(Buffer.isBuffer))
+  assert(h.sockets[1].sent.some(Buffer.isBuffer))
+  for (const socket of h.sockets)
+    socket.emit(
+      'message',
+      Buffer.from(
+        JSON.stringify({
+          header: { event: 'result-generated' },
+          payload: { output: { sentence: { text: '识别', sentence_end: true } } }
+        })
+      )
+    )
+  assert.deepEqual(
+    sentences.map((x) => x[2]),
+    ['system', 'microphone']
+  )
+  await h.handlers.get('stop-transcription')()
+  assert.equal(sentences.filter((x) => x[0] === '尾句').length, 2)
+  assert(!h.api.isTranscriptionRunning('conversation'))
+})
+
+test('new start waits for a draining old session and creates the requested purpose', async () => {
+  const h = harness(true)
+  await h.handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system', 'microphone']
+  })
+  const stopping = h.handlers.get('stop-transcription')()
+  const starting = h.handlers.get('start-transcription')(null, 'test', { purpose: 'screenshot' })
+  for (const s of h.sockets.slice(0, 2))
+    s.emit('message', Buffer.from(JSON.stringify({ header: { event: 'task-finished' } })))
+  await stopping
+  await starting
+  assert.equal(h.sockets.length, 3)
+  assert(h.api.isTranscriptionRunning('screenshot'))
+  h.sockets[2].emit('message', Buffer.from(JSON.stringify({ header: { event: 'task-finished' } })))
+})
+
+test('ASR failure notifies existing hooks once and closes every source', async () => {
+  const h = harness(),
+    errors = [],
+    starts = [],
+    ends = []
+  h.api.onTranscriptionError((message) => errors.push(message))
+  h.api.onTranscriptionStart((purpose) => starts.push(purpose))
+  h.api.onTranscriptionEnd(() => ends.push(true))
+  await h.handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system', 'microphone']
+  })
+  assert.deepEqual(starts, ['conversation'])
+  h.sockets[1].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({ header: { event: 'task-failed', error_message: 'InvalidApiKey' } })
+    )
+  )
+  assert.equal(errors.length, 1)
+  assert.equal(errors[0], '百炼平台 API Key 无效，请到「设置 → 语音」重新填写（InvalidApiKey）')
+  assert.equal(ends.length, 1)
+  assert(h.sockets.every((s) => s.readyState === 3))
+  assert.equal(h.api.isTranscriptionRunning('conversation'), false)
+})
+
+test('failures are worded for the user, naming the source only for its own failure in dual mode', async () => {
+  const fails = (code, message) =>
+    Buffer.from(
+      JSON.stringify({
+        header: { event: 'task-failed', error_code: code, error_message: message }
+      })
+    )
+  const run = async (sources, socket, data) => {
+    const h = harness(),
+      errors = []
+    h.api.onTranscriptionError((message) => errors.push(message))
+    await h.handlers.get('start-transcription')(null, 'test', {
+      purpose: sources ? 'conversation' : 'screenshot',
+      sources
+    })
+    if (data instanceof Error) h.sockets[socket].emit('error', data)
+    else h.sockets[socket].emit('message', data)
+    return errors
+  }
+  assert.deepEqual(await run(undefined, 0, fails('InvalidApiKey', 'Invalid API-key provided.')), [
+    '百炼平台 API Key 无效，请到「设置 → 语音」重新填写（InvalidApiKey）'
+  ])
+  assert.deepEqual(await run(undefined, 0, new Error('Unexpected server response: 401')), [
+    '百炼平台 API Key 无效，请到「设置 → 语音」重新填写（HTTP 401）'
+  ])
+  assert.deepEqual(
+    await run(
+      undefined,
+      0,
+      Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })
+    ),
+    ['连不上百炼平台，请检查网络（ENOTFOUND）']
+  )
+  assert.deepEqual(await run(['system', 'microphone'], 1, fails('Arrearage', 'Access denied')), [
+    '百炼平台拒绝了语音识别，请到百炼控制台确认账户没有欠费、能使用 Fun-ASR 实时语音识别（Arrearage）'
+  ])
+  assert.deepEqual(await run(['system', 'microphone'], 1, fails('InvalidParameter', 'bad audio')), [
+    '麦克风的语音识别失败：bad audio（InvalidParameter）'
+  ])
+  assert.deepEqual(await run(undefined, 0, fails('InvalidParameter', 'bad audio')), [
+    '语音识别失败：bad audio（InvalidParameter）'
+  ])
+})
+
+test('a stalled finish is bounded by 700ms and concurrent stops share the drain', async (t) => {
+  const h = harness(true)
+  await h.handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system', 'microphone']
+  })
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const first = h.handlers.get('stop-transcription')()
+  const second = h.handlers.get('stop-transcription')()
+  assert.equal(first, second)
+  t.mock.timers.tick(700)
+  await first
+  assert(h.sockets.every((s) => s.readyState === 3))
+  assert.equal(h.messages.filter((x) => x[0] === 'transcription-stopped').length, 1)
+})
+
+test('one source rejecting startup closes the other and preserves the ASR error', async () => {
+  const h = harness()
+  // Fail before task-started: simulates an invalid credential / handshake failure.
+  h.sockets.push = function (...sockets) {
+    Array.prototype.push.apply(this, sockets)
+    if (this.length === 2)
+      queueMicrotask(() => sockets[0].emit('error', new Error('InvalidApiKey')))
+    return this.length
+  }
+  await assert.rejects(
+    h.handlers.get('start-transcription')(null, 'test', {
+      purpose: 'conversation',
+      sources: ['system', 'microphone']
+    }),
+    /百炼平台 API Key 无效.*InvalidApiKey/
+  )
+  assert(h.sockets.every((s) => s.readyState === 3))
+  assert.equal(h.messages.filter((x) => x[0] === 'transcription-stopped').length, 1)
+})
+
+test('the preload drops the prefix Electron puts on a rejected start', async (t) => {
+  // Outside Electron `process.contextIsolated` is unset, so the preload sets window.api
+  const previous = global.window
+  global.window = {}
+  t.after(() => (global.window = previous))
+  require('./load-source.cjs')('src/preload/index.ts', {
+    electron: {
+      contextBridge: {},
+      ipcRenderer: {
+        invoke: async () => {
+          throw new Error(
+            "Error invoking remote method 'start-transcription': Error: 百炼平台 API Key 无效（HTTP 401）"
+          )
+        }
+      },
+      webUtils: {}
+    },
+    '@electron-toolkit/preload': { electronAPI: {} }
+  })
+  await assert.rejects(global.window.api.startTranscription('key'), {
+    message: '百炼平台 API Key 无效（HTTP 401）'
+  })
+})

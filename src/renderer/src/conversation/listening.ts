@@ -10,36 +10,66 @@ import { describeCaptureError, startAudioCapture, stopAudioCapture } from '@/lib
  * conversation. It keeps running while the settings or help page is open, so
  * adjusting something mid-call does not drop what is being said.
  */
+let operation = 0
+let starting = false
+
 export async function startListening(): Promise<void> {
-  const { dashscopeApiKey, conversationSilenceMs } = useSettingsStore.getState()
+  if (starting) return
+  const request = ++operation
+  starting = true
+  const { dashscopeApiKey, conversationSilenceMs, conversationAudioMode } =
+    useSettingsStore.getState()
   const { setErrorMessage } = useConversationStore.getState()
   if (!dashscopeApiKey) {
+    starting = false
     setErrorMessage('请先在「设置 → 语音」填写百炼平台 API Key，才能识别对方说话')
     return
   }
+  let phase: 'capture' | 'asr' = 'asr'
   try {
-    await startAudioCapture()
+    await window.api.stopTranscription()
+    if (request !== operation) return
+    phase = 'capture'
+    const sources = await startAudioCapture({ mode: conversationAudioMode || 'system' })
+    if (request !== operation) return
+    phase = 'asr'
     await window.api.startTranscription(dashscopeApiKey, {
       purpose: 'conversation',
+      sources,
       maxSentenceSilence: conversationSilenceMs
     })
+    if (request !== operation) return
     useTranscriptionStore.getState().setIsTranscribing(true)
     setErrorMessage(null)
   } catch (err) {
+    if (request !== operation) return
     console.error('Failed to start listening:', err)
     stopAudioCapture()
-    setErrorMessage(describeCaptureError('启动语音识别失败', err))
+    await window.api.stopTranscription()
+    if (request !== operation) return
+    useTranscriptionStore.getState().setIsTranscribing(false)
+    setErrorMessage(
+      phase === 'capture'
+        ? describeCaptureError('启动录音失败', err)
+        : err instanceof Error
+          ? err.message
+          : String(err)
+    )
+  } finally {
+    if (request === operation) starting = false
   }
 }
 
 export async function stopListening(): Promise<void> {
+  const request = ++operation
+  starting = false
   stopAudioCapture()
   await window.api.stopTranscription()
-  useTranscriptionStore.getState().setIsTranscribing(false)
+  if (request === operation) useTranscriptionStore.getState().setIsTranscribing(false)
 }
 
 export function toggleListening(): void {
-  if (useTranscriptionStore.getState().isTranscribing) void stopListening()
+  if (starting || useTranscriptionStore.getState().isTranscribing) void stopListening()
   else void startListening()
 }
 

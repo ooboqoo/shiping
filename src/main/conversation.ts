@@ -17,6 +17,7 @@ import {
   looksLikeQuestion,
   NO_REPLY,
   type ConversationSnapshot,
+  type AudioSource,
   type HintCard,
   type Utterance
 } from '../shared/conversation'
@@ -76,6 +77,7 @@ const MEMO_RETRY = 30_000
 const MEMO_SYSTEM = [
   '你在为一位正在通话（多为面试）的用户维护对话备忘。把【新的一段对话】合并进【当前备忘】，输出更新后的完整备忘。',
   '「对方」是通话另一方说的话；「提示」是给用户的回答建议，用户大致会照着说。',
+  '「我（实际回答）」是用户真实说过的话，不能当成对方的问题；与提示建议有差别时，以实际回答为准记入【已给出的说法】。',
   '固定四节，没有内容的节写「无」：',
   '【对方问过的问题】每题一行，最新的在最后',
   '【对方透露的信息】公司、岗位、团队、项目、要求等',
@@ -217,9 +219,8 @@ function enoughToAnswer(text: string): boolean {
 }
 
 /** The sentence the recogniser is still revising, if any */
-function openUtterance(): Utterance | undefined {
-  const last = utterances.at(-1)
-  return last && !last.final ? last : undefined
+function openUtterance(source: AudioSource = 'system'): Utterance | undefined {
+  return utterances.findLast((u) => !u.final && (u.source ?? 'system') === source)
 }
 
 function waitingCard(): HintCard | undefined {
@@ -232,12 +233,12 @@ function stopStream(cardId: number) {
   streams.delete(cardId)
 }
 
-function handleSentence(text: string, final: boolean) {
-  let utterance = openUtterance()
+function handleSentence(text: string, final: boolean, source?: AudioSource) {
+  let utterance = openUtterance(source)
   if (!utterance) {
     // The recogniser reports silence as an empty sentence; nothing to show
     if (!text.trim()) return
-    utterance = { id: nextUtteranceId++, text, final }
+    utterance = { id: nextUtteranceId++, text, final, ...(source ? { source } : {}) }
     utterances.push(utterance)
     startedAt ||= Date.now()
   } else {
@@ -246,15 +247,21 @@ function handleSentence(text: string, final: boolean) {
   }
 
   if (final && !utterance.text.trim()) {
-    utterances.pop()
+    utterances.splice(utterances.indexOf(utterance), 1)
     send('conversation-utterance-removed', utterance.id)
     scheduleSave()
     // What withdrew a hint came to nothing: write it for what it had
-    const waiting = waitingCard()
+    const waiting = source !== 'microphone' ? waitingCard() : undefined
     if (waiting) void startHint(waiting, waiting.fromId, waiting.toId, 'auto')
     return
   }
   publishUtterance(utterance)
+
+  // Own speech is history, never a question or an interruption of the other side.
+  if (source === 'microphone') {
+    if (final) void updateMemo()
+    return
+  }
 
   if (final) {
     onSentenceFinished(utterance)
@@ -408,6 +415,9 @@ function memoBoundary(): number {
     const unsettled = card.status === 'streaming' || card.status === 'waiting'
     if (card.fromId <= upTo && (card.toId > upTo || unsettled)) upTo = card.fromId - 1
   }
+  // Independent speakers can leave an older sentence open while the other continues.
+  const open = utterances.find((u) => !u.final)
+  if (open) upTo = Math.min(upTo, open.id - 1)
   return upTo
 }
 
@@ -416,7 +426,9 @@ function memoTranscript(upTo: number): string {
   const lines: string[] = []
   for (const utterance of utterances) {
     if (utterance.id <= memoUpTo || utterance.id > upTo || !utterance.text.trim()) continue
-    lines.push(`对方：${utterance.text.trim()}`)
+    lines.push(
+      `${utterance.source === 'microphone' ? '我（实际回答）' : '对方'}：${utterance.text.trim()}`
+    )
     for (const card of hints) {
       if (card.toId === utterance.id && answered(card)) {
         lines.push(`提示：${cut(card.text.trim(), MEMO_HINT_CHARS)}`)
@@ -509,15 +521,23 @@ function buildMessages(
 ): ModelMessage[] {
   const context: string[] = []
   let chars = 0
-  const earlier = utterances.filter((u) => u.id < fromId && u.text.trim())
+  const earlier = utterances.filter(
+    (u) => u.text.trim() && (u.id < fromId || u.source === 'microphone')
+  )
+  const hasSelf = earlier.some((u) => u.source === 'microphone')
   // Most recent first, until the budget runs out
   for (let i = earlier.length - 1; i >= 0 && context.length < CONTEXT_UTTERANCES; i--) {
-    chars += earlier[i].text.length
+    const text = hasSelf
+      ? `${earlier[i].source === 'microphone' ? '我（实际回答）' : '对方'}：${earlier[i].text}`
+      : earlier[i].text
+    chars += text.length
     if (chars > CONTEXT_CHARS && context.length > 0) break
-    context.unshift(earlier[i].text)
+    context.unshift(text)
   }
 
-  const focus = utterances.filter((u) => u.id >= fromId && u.id <= toId && u.text.trim())
+  const focus = utterances.filter(
+    (u) => u.source !== 'microphone' && u.id >= fromId && u.id <= toId && u.text.trim()
+  )
   const unfinished = !early && focus.length > 0 && !focus[focus.length - 1].final
   const given = recentHints(fromId)
 
@@ -525,7 +545,10 @@ function buildMessages(
   if (memo && fromId > memoUpTo) {
     parts.push(`【更早对话的备忘】（前面对话的摘要，提示要与其中的说法保持一致）\n${memo}`)
   }
-  if (context.length > 0) parts.push(`【之前对方说过的话】\n${context.join('\n')}`)
+  if (context.length > 0)
+    parts.push(
+      `${hasSelf ? '【之前对话原文】（我（实际回答）是用户说过的话）' : '【之前对方说过的话】'}\n${context.join('\n')}`
+    )
   if (given.length > 0) {
     parts.push(
       `【你最近给过的提示（节选）】\n${given.join('\n---\n')}\n\n对方若是追问，接着这个思路往下说；不要重复已经给过的内容。`
@@ -542,7 +565,9 @@ function buildMessages(
 
 /** What the 外部知识库 is asked for a hint on `fromId`..`toId`, see `SHORT_QUERY_CHARS` */
 function hintQuery(fromId: number, toId: number): string {
-  const spoken = utterances.filter((u) => u.id <= toId && u.text.trim())
+  const spoken = utterances.filter(
+    (u) => u.source !== 'microphone' && u.id <= toId && u.text.trim()
+  )
   const focus = spoken.filter((u) => u.id >= fromId).map((u) => u.text.trim())
   const before = spoken.filter((u) => u.id < fromId).at(-1)
   if (before && focus.join('').length < SHORT_QUERY_CHARS) focus.unshift(before.text.trim())
@@ -632,7 +657,7 @@ async function startHint(
  * last hint.
  */
 export function requestHint(): void {
-  const latest = utterances.at(-1)
+  const latest = utterances.findLast((u) => u.source !== 'microphone')
   const current = [...hints]
     .reverse()
     .find((card) => card.status === 'streaming' || card.status === 'waiting')
@@ -736,12 +761,15 @@ onTranscriptionEnd(() => {
   cancelEarlyHint()
   stopKeepWarm()
   markMobileDirty()
+  // ASR may have drained the other side already while own speech remains open.
   const open = openUtterance()
-  if (!open) return
-  open.final = true
-  publishUtterance(open)
+  for (const utterance of utterances.filter((u) => !u.final)) {
+    utterance.final = true
+    publishUtterance(utterance)
+  }
   const waiting = waitingCard()
-  if (waiting) void startHint(waiting, waiting.fromId, open.id, 'auto')
+  if (waiting)
+    void startHint(waiting, waiting.fromId, Math.max(waiting.toId, open?.id ?? 0), 'auto')
 })
 
 // Turned on (or pointed at another folder) mid-conversation: save what is there already
