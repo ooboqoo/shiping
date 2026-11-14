@@ -225,8 +225,14 @@ export function AppContent() {
   )
 
   return (
-    // The status bar (32px) floats over the bottom: the end of the answer must clear it
-    <ScrollPanel id="app-content" viewportRef={scrollRef} contentClassName="px-6 pt-4 pb-12">
+    // The status bar (32px) floats over the bottom: the end of the answer must
+    // clear it, and the scrollbar ends above it rather than drawing over it
+    <ScrollPanel
+      id="app-content"
+      viewportRef={scrollRef}
+      contentClassName="px-6 pt-4 pb-12"
+      scrollbarClassName="h-[calc(100%-2rem)]"
+    >
       {/* Error Banner */}
       {errorMessage && (
         <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex items-start gap-3">
@@ -402,7 +408,8 @@ function Screenshots({
 function ShortcutTip() {
   const { shortcuts } = useShortcutsStore()
   return (
-    <div className="flex items-center justify-center h-full text-xl text-app-muted-fg select-none">
+    // Centred in the panel: its visible height (cqh) less the content's pt-4 pb-12
+    <div className="flex items-center justify-center h-[calc(100cqh-4rem)] text-xl text-app-muted-fg select-none">
       请按下快捷键
       <ShortcutRenderer
         shortcut={shortcuts.takeScreenshot.key}

@@ -259,7 +259,8 @@ function EmptyState() {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-app-muted-fg select-none">
+    // Centred in the panel: its visible height (cqh) less the content's pb-4
+    <div className="flex h-[calc(100cqh-1rem)] flex-col items-center justify-center gap-3 px-6 text-center text-sm text-app-muted-fg select-none">
       {content}
     </div>
   )

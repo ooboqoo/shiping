@@ -142,6 +142,23 @@
   overflow-y: hidden;
 }
 
+/* So does a table, in its wrapper (MarkdownRenderer). The wrapper takes over
+   the table's margins, which inside a scroll box would no longer collapse with
+   the text around it: prose's 2em at the table's size, 12/14 of the text's */
+.prose .table-scroll {
+  overflow-x: auto;
+  margin-block: calc(2em * 12 / 14);
+}
+.prose .table-scroll > table {
+  margin-block: 0;
+}
+.prose > .table-scroll:first-child {
+  margin-top: 0;
+}
+.prose > .table-scroll:last-child {
+  margin-bottom: 0;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

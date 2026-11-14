@@ -14,12 +14,18 @@ const HIDE_DELAY = 800
  * lets the content be styled.
  *
  * The root needs a definite height (a flex item, or a set height); padding and
- * layout of the scrolled content go in `contentClassName`.
+ * layout of the scrolled content go in `contentClassName`. The content element
+ * is as tall as what it holds, so `h-full` inside it comes to nothing: size to
+ * the visible height with `cqh` instead (minus the content's padding).
+ *
+ * Nothing scrolls sideways: Radix hides horizontal overflow, so anything wider
+ * than the panel scrolls in a box of its own (code blocks, formulas, tables).
  */
 export function ScrollPanel({
   id,
   className,
   contentClassName,
+  scrollbarClassName,
   viewportRef,
   onScroll,
   children
@@ -27,6 +33,11 @@ export function ScrollPanel({
   id?: string
   className?: string
   contentClassName?: string
+  /**
+   * E.g. a shorter track (`h-[calc(100%-…)]`), to end it above something
+   * floating over the panel's bottom. A margin does nothing: the track's height is set
+   */
+  scrollbarClassName?: string
   viewportRef?: Ref<HTMLDivElement>
   onScroll?: UIEventHandler<HTMLDivElement>
   children: ReactNode
@@ -52,7 +63,12 @@ export function ScrollPanel({
           {children}
         </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar className="z-10 data-[state=hidden]:animate-out data-[state=hidden]:fade-out-0 data-[state=visible]:animate-in data-[state=visible]:fade-in-0 [&>[data-slot=scroll-area-thumb]]:bg-[var(--app-scrollbar-thumb)]" />
+      <ScrollBar
+        className={cn(
+          'z-10 data-[state=hidden]:animate-out data-[state=hidden]:fade-out-0 data-[state=visible]:animate-in data-[state=visible]:fade-in-0 [&>[data-slot=scroll-area-thumb]]:bg-[var(--app-scrollbar-thumb)]',
+          scrollbarClassName
+        )}
+      />
     </ScrollAreaPrimitive.Root>
   )
 }

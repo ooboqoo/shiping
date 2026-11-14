@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -28,6 +28,17 @@ function normalizeMathDelimiters(markdown: string): string {
 // A formula still streaming in fails to parse: show its source in the text color, not red
 const katexOptions = { errorColor: 'inherit' }
 
+const components: Components = {
+  // A table wider than the panel scrolls sideways in a box of its own (base.css):
+  // the scrolling panels hide horizontal overflow, which would cut it off
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- `node` must not reach the DOM
+  table: ({ node, ...props }) => (
+    <div className="table-scroll">
+      <table {...props} />
+    </div>
+  )
+}
+
 // Ref https://github.com/tailwindlabs/tailwindcss-typography to fine-tune the markdown style
 function MarkdownRenderer({
   children,
@@ -48,6 +59,7 @@ function MarkdownRenderer({
         remarkPlugins={[remarkGfm, remarkMath]}
         // KaTeX first: remark-math emits `code.language-math`, which highlight must not see
         rehypePlugins={[[rehypeKatex, katexOptions], rehypeHighlight]}
+        components={components}
       >
         {normalizeMathDelimiters(children)}
       </ReactMarkdown>
