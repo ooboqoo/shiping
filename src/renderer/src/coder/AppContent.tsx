@@ -6,6 +6,7 @@ import { useSolutionStore, type ReasoningRound, type RoundUi } from '@/lib/store
 import { cn } from '@/lib/utils'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
+import { ScrollPanel } from '@/components/ScrollPanel'
 
 const SCROLL_OFFSET = 120
 
@@ -171,9 +172,12 @@ export function AppContent() {
     }
   }, [flushChunks, setIsLoading, setLiveRound, setErrorMessage])
 
+  // The panel's viewport: the element that actually scrolls
+  const scrollRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     window.api.onScrollPageUp(() => {
-      const container = document.getElementById('app-content')
+      const container = scrollRef.current
       if (!container) return
       container.scrollTo({
         top: container.scrollTop - window.innerHeight + SCROLL_OFFSET,
@@ -187,7 +191,7 @@ export function AppContent() {
 
   useEffect(() => {
     window.api.onScrollPageDown(() => {
-      const container = document.getElementById('app-content')
+      const container = scrollRef.current
       if (!container) return
       container.scrollTo({
         top: container.scrollTop + window.innerHeight - SCROLL_OFFSET,
@@ -222,7 +226,7 @@ export function AppContent() {
 
   return (
     // The status bar (32px) floats over the bottom: the end of the answer must clear it
-    <div id="app-content" className="px-6 pt-4 pb-12">
+    <ScrollPanel id="app-content" viewportRef={scrollRef} contentClassName="px-6 pt-4 pb-12">
       {/* Error Banner */}
       {errorMessage && (
         <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex items-start gap-3">
@@ -293,7 +297,7 @@ export function AppContent() {
           </Fragment>
         ))
       )}
-    </div>
+    </ScrollPanel>
   )
 }
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { Brain, Eraser, LoaderCircle, PanelLeftOpen, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ScrollPanel } from '@/components/ScrollPanel'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { useSettingsStore } from '@/lib/store/settings'
@@ -109,9 +110,10 @@ export function HintPanel() {
         </div>
       )}
 
-      <div
-        ref={panelRef}
-        className="panel-scroll min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-4"
+      <ScrollPanel
+        viewportRef={panelRef}
+        className="min-h-0 flex-1"
+        contentClassName="space-y-3 px-3 pb-4"
       >
         {hints.length === 0 ? (
           <EmptyState />
@@ -119,8 +121,9 @@ export function HintPanel() {
           hints.map((card) => (
             // The newest card keeps a full panel of room under it, else a short
             // one could not scroll to the top: it would stop at the bottom edge
-            // with only its first line showing, and grow out of sight from there
-            <div key={card.id} className="last:min-h-full">
+            // with only its first line showing, and grow out of sight from there.
+            // 100cqh: the panel's visible height (ScrollPanel's viewport is a size container)
+            <div key={card.id} className="last:min-h-[100cqh]">
               <HintCardView
                 card={card}
                 ref={(el) => {
@@ -131,7 +134,7 @@ export function HintPanel() {
             </div>
           ))
         )}
-      </div>
+      </ScrollPanel>
     </section>
   )
 }
