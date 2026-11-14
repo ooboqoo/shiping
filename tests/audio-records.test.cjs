@@ -146,6 +146,10 @@ test('desktop transcript identifies own speech separately from the other side', 
   ]
   const { TranscriptPanel } = load('src/renderer/src/conversation/TranscriptPanel.tsx', {
     '@/lib/utils': { cn: (...xs) => xs.filter(Boolean).join(' ') },
+    '@/components/ScrollPanel': {
+      // eslint-disable-next-line react/prop-types -- test stand-in
+      ScrollPanel: ({ children }) => React.createElement('div', null, children)
+    },
     '@/lib/store/settings': {
       useSettingsStore: (f) =>
         f({

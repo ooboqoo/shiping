@@ -291,6 +291,10 @@ interface Settings {
   showOverlayToolbar: boolean
   /** 隐藏主页面底部的快捷键提醒文字 */
   hideShortcutHints: boolean
+  /** No 帮助 button in the mode pages' title bar; the settings nav keeps a way in */
+  hideHeaderHelp: boolean
+  /** No 退出 (✕) button in the mode pages' title bar, against quitting by a stray click */
+  hideHeaderQuit: boolean
   /** Dwell time in ms before hovering a toolbar button fires it; 0 disables hover triggering */
   toolbarHoverDelay: number
   /** The toolbar buttons the user turned on or off per mode; the rest keep their default */
@@ -452,6 +456,8 @@ const defaultSettings: Settings = {
   resizable: true,
   showOverlayToolbar: true,
   hideShortcutHints: false,
+  hideHeaderHelp: false,
+  hideHeaderQuit: false,
   toolbarHoverDelay: 1000,
   toolbarButtons: createToolbarButtons(),
   screenshotDisplay: 'gallery',

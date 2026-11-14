@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Mic, PanelLeftClose } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ScrollPanel } from '@/components/ScrollPanel'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
@@ -44,9 +45,10 @@ export function TranscriptPanel() {
           收起
         </button>
       </div>
-      <div
-        ref={scrollRef}
-        className="panel-scroll min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pb-3"
+      <ScrollPanel
+        viewportRef={scrollRef}
+        className="min-h-0 flex-1"
+        contentClassName="space-y-1.5 px-3 pb-3"
         onScroll={(e) => {
           const el = e.currentTarget
           sticky.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD
@@ -79,7 +81,7 @@ export function TranscriptPanel() {
             </p>
           ))
         )}
-      </div>
+      </ScrollPanel>
     </section>
   )
 }

@@ -18,6 +18,18 @@ import { ToolbarButtonsField } from '../ToolbarButtonsField'
 const trayIconLabel = isMac ? '隐藏状态栏图标' : '隐藏托盘图标'
 const trayIconPlace = isMac ? '屏幕顶部状态栏' : '任务栏右下角'
 
+/** What still quits the app once the title bar's ✕ is hidden, on this platform with these settings */
+function quitWaysNote(hideTrayIcon: boolean, hideDockIcon: boolean): string {
+  const ways = [
+    !hideTrayIcon && `${trayIconPlace}图标右键选「退出识屏」`,
+    isMac && !hideDockIcon && '程序坞图标右键选「退出」',
+    `点一下识屏窗口再按 ${isMac ? 'Cmd+Q' : 'Alt+F4'}`
+  ].filter(Boolean)
+  const last = ways.pop()
+  const list = ways.length > 0 ? `${ways.join('、')}，或${last}` : last
+  return `开启后标题栏不显示退出按钮（✕），防止误点。仍可以这样退出：${list}`
+}
+
 export function AppearanceSection() {
   const {
     theme,
@@ -25,6 +37,8 @@ export function AppearanceSection() {
     resizable,
     showOverlayToolbar,
     hideShortcutHints,
+    hideHeaderHelp,
+    hideHeaderQuit,
     toolbarHoverDelay,
     stealthEnabled,
     hideDockIcon,
@@ -82,6 +96,25 @@ export function AppearanceSection() {
               className="scale-y-90"
               checked={hideShortcutHints}
               onCheckedChange={(checked) => updateSetting('hideShortcutHints', checked)}
+            />
+          </Field>
+
+          <Field
+            label="隐藏帮助按钮"
+            note="开启后，标题栏不再显示帮助按钮，可从设置左侧的「帮助」进入"
+          >
+            <Switch
+              className="scale-y-90"
+              checked={hideHeaderHelp}
+              onCheckedChange={(checked) => updateSetting('hideHeaderHelp', checked)}
+            />
+          </Field>
+
+          <Field label="隐藏退出按钮" note={quitWaysNote(hideTrayIcon, hideDockIcon)}>
+            <Switch
+              className="scale-y-90"
+              checked={hideHeaderQuit}
+              onCheckedChange={(checked) => updateSetting('hideHeaderQuit', checked)}
             />
           </Field>
 

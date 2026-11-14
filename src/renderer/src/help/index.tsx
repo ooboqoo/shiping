@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import {
   ArrowLeft,
   Lightbulb,
@@ -19,10 +19,14 @@ import { Shortcuts } from './Shortcuts'
 import { OverlayToolbarHelp } from './OverlayToolbar'
 import { FAQ } from './FAQ'
 import { UpdateNotice } from './UpdateNotice'
+import { ScrollPanel } from '@/components/ScrollPanel'
 
 export default function HelpPage() {
   const [appVersion, setAppVersion] = useState('')
   const lastMode = useSettingsStore((state) => state.lastMode)
+  // Opened from the settings nav: back returns there, else to the mode page
+  const from = (useLocation().state as { from?: string } | null)?.from
+  const backTo = from?.startsWith('/settings') ? from : MODE_PATHS[lastMode]
 
   useEffect(() => {
     window.api.getAppVersion().then(setAppVersion)
@@ -34,7 +38,7 @@ export default function HelpPage() {
       <div id="app-header" className="flex items-center">
         <div className="actions">
           <Button variant="ghost" asChild size="icon" className="w-12 mr-2 rounded-none">
-            <Link to={MODE_PATHS[lastMode]}>
+            <Link to={backTo}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -43,7 +47,7 @@ export default function HelpPage() {
       </div>
 
       {/* Help Content */}
-      <div id="app-content" className="flex flex-col gap-4 p-8">
+      <ScrollPanel id="app-content" contentClassName="flex flex-col gap-4 p-8">
         {/* Introduction */}
         <HelpSection Icon={Info} title="简介" description={appVersion && `当前版本 v${appVersion}`}>
           <UpdateNotice />
@@ -158,7 +162,7 @@ export default function HelpPage() {
             </div>
           </div>
         </HelpSection>
-      </div>
+      </ScrollPanel>
     </>
   )
 }

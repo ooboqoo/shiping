@@ -28,7 +28,7 @@
 }
 
 #app-content {
-  @apply h-[calc(100vh-36px)] overflow-y-auto;
+  @apply h-[calc(100vh-36px)];
   background: var(--app-surface-bg);
   color: var(--app-surface-fg);
 }
@@ -37,11 +37,6 @@
 .conversation-page {
   background: var(--app-surface-bg);
   color: var(--app-surface-fg);
-}
-
-.panel-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: var(--app-scrollbar-thumb) transparent;
 }
 
 .transcription-scroll {

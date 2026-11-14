@@ -25,6 +25,8 @@ export function AppHeader({ mode }: { mode: AppMode }) {
     return state.scenes.find((s) => s.id === id)?.name
   })
   const context = [sceneName, model].filter(Boolean).join(' · ')
+  const hideHelp = useSettingsStore((state) => state.hideHeaderHelp)
+  const hideQuit = useSettingsStore((state) => state.hideHeaderQuit)
   const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {
@@ -82,14 +84,16 @@ export function AppHeader({ mode }: { mode: AppMode }) {
         >
           <SettingsIcon />
         </Button>
-        <Button
-          variant="ghost"
-          className="size-8 cursor-pointer hover:opacity-50"
-          onClick={() => navigate('/help')}
-        >
-          <HelpCircle />
-        </Button>
-        {/* Both always there, so each button means one thing */}
+        {!hideHelp && (
+          <Button
+            variant="ghost"
+            className="size-8 cursor-pointer hover:opacity-50"
+            onClick={() => navigate('/help')}
+          >
+            <HelpCircle />
+          </Button>
+        )}
+        {/* Two buttons, so each means one thing; 退出 can be turned off, 隐藏 cannot */}
         <Button
           variant="ghost"
           aria-label="隐藏窗口"
@@ -98,14 +102,16 @@ export function AppHeader({ mode }: { mode: AppMode }) {
         >
           <Minus />
         </Button>
-        <Button
-          variant="ghost"
-          aria-label="退出识屏"
-          className="size-8 cursor-pointer hover:opacity-50 hover:text-red-500"
-          onClick={() => window.close()}
-        >
-          <X />
-        </Button>
+        {!hideQuit && (
+          <Button
+            variant="ghost"
+            aria-label="退出识屏"
+            className="size-8 cursor-pointer hover:opacity-50 hover:text-red-500"
+            onClick={() => window.close()}
+          >
+            <X />
+          </Button>
+        )}
       </div>
     </div>
   )

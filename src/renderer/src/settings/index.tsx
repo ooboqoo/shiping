@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Bot,
   Camera,
+  HelpCircle,
   Keyboard,
   LibraryBig,
   MessagesSquare,
@@ -27,6 +28,7 @@ import { ConversationSection } from './sections/ConversationSection'
 import { KnowledgeSection } from './sections/KnowledgeSection'
 import { MobileSection } from './sections/MobileSection'
 import { NetworkSection } from './sections/NetworkSection'
+import { ScrollPanel } from '@/components/ScrollPanel'
 
 type Tab =
   | 'ai'
@@ -149,32 +151,53 @@ export default function SettingsPage() {
 
       {/* The page itself never scrolls: the nav stays put, the content scrolls */}
       <div id="app-content" className="flex" style={{ overflow: 'hidden' }}>
-        <nav className="flex w-36 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-black/10 p-2 max-[640px]:w-12">
-          {NAV.map((group) => (
-            <div key={group.heading} className="flex flex-col gap-0.5">
-              <div className="px-3 pt-3 pb-1 text-xs opacity-60 select-none max-[640px]:hidden">
-                {group.heading}
+        <ScrollPanel
+          className="w-36 shrink-0 border-r border-black/10 max-[640px]:w-12"
+          contentClassName="p-2"
+        >
+          <nav className="flex flex-col gap-0.5">
+            {NAV.map((group) => (
+              <div key={group.heading} className="flex flex-col gap-0.5">
+                <div className="px-3 pt-3 pb-1 text-xs opacity-60 select-none max-[640px]:hidden">
+                  {group.heading}
+                </div>
+                {group.items.map(({ tab: itemTab, label, Icon }) => (
+                  <button
+                    key={itemTab}
+                    aria-label={label}
+                    className={cn(
+                      'flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors cursor-pointer select-none max-[640px]:justify-center max-[640px]:px-0',
+                      itemTab === tab ? 'bg-gray-300/80 font-medium' : 'hover:bg-gray-300/40'
+                    )}
+                    onClick={() => openTab(itemTab)}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate max-[640px]:hidden">{label}</span>
+                  </button>
+                ))}
               </div>
-              {group.items.map(({ tab: itemTab, label, Icon }) => (
-                <button
-                  key={itemTab}
-                  aria-label={label}
-                  className={cn(
-                    'flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors cursor-pointer select-none max-[640px]:justify-center max-[640px]:px-0',
-                    itemTab === tab ? 'bg-gray-300/80 font-medium' : 'hover:bg-gray-300/40'
-                  )}
-                  onClick={() => openTab(itemTab)}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate max-[640px]:hidden">{label}</span>
-                </button>
-              ))}
+            ))}
+            <div className="mt-2 border-t border-black/10 pt-2">
+              {/* The help page's own way in, for when the title bar's button is hidden */}
+              <Link
+                to="/help"
+                state={{ from: `/settings?tab=${tab}` }}
+                aria-label="帮助"
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors select-none hover:bg-gray-300/40 max-[640px]:justify-center max-[640px]:px-0"
+              >
+                <HelpCircle className="h-4 w-4 shrink-0" />
+                <span className="truncate max-[640px]:hidden">帮助</span>
+              </Link>
             </div>
-          ))}
-        </nav>
-        <div ref={contentRef} className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
+          </nav>
+        </ScrollPanel>
+        <ScrollPanel
+          viewportRef={contentRef}
+          className="min-w-0 flex-1"
+          contentClassName="flex flex-col gap-4 p-3"
+        >
           {sections[tab]}
-        </div>
+        </ScrollPanel>
       </div>
     </>
   )
