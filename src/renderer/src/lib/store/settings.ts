@@ -187,6 +187,9 @@ export type SnipMode = 'send' | 'ask'
 /** What to do when a saved code file would collide with an existing one */
 export type CodeNamingMode = 'sequence' | 'overwrite'
 
+/** What a finished answer puts on the clipboard: its first code block, or all of it */
+export type ClipboardContent = 'code' | 'answer'
+
 /** Immutably replace one profile, leaving the rest untouched */
 function patchProfile(
   profiles: ApiProfile[],
@@ -319,8 +322,10 @@ interface Settings {
   codeFileBaseName: string
   /** 重名时：sequence 依次编号（Test1、Test2），overwrite 覆盖同一个文件 */
   codeNamingMode: CodeNamingMode
-  /** 把 AI 生成的代码自动复制到系统剪贴板 */
+  /** 回答写完后自动复制到系统剪贴板，复制什么由 clipboardContent 决定 */
   codeCopyToClipboard: boolean
+  /** code 只复制第一个代码块，answer 复制整段回答（Markdown 原文） */
+  clipboardContent: ClipboardContent
 
   dashscopeApiKey: string
 
@@ -473,6 +478,7 @@ const defaultSettings: Settings = {
   codeFileBaseName: 'Test',
   codeNamingMode: 'sequence',
   codeCopyToClipboard: false,
+  clipboardContent: 'code',
 
   dashscopeApiKey: '',
 

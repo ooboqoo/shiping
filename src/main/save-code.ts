@@ -1,7 +1,7 @@
 import { clipboard } from 'electron'
 import { mkdir, open } from 'node:fs/promises'
 import { join, basename } from 'node:path'
-import { settings } from './settings'
+import { settings, type ClipboardContent } from './settings'
 
 /**
  * Base name used when the user leaves the setting blank.
@@ -240,21 +240,31 @@ function pickCodeBlock(answer: string): CodeBlock | null {
 }
 
 /**
- * Copy the answer's code block to the system clipboard, so the user can paste
- * it straight into an editor. Only the code is copied — the fence markers
- * would just be noise when pasted.
+ * What a finished answer puts on the clipboard: its first code block, without
+ * the fence markers (noise in an editor), or the whole answer as the model
+ * wrote it, Markdown included. Null when there is nothing to copy, e.g. a
+ * non-coding answer while only code is wanted.
  */
-export async function copyCodeToClipboard(answer: string): Promise<void> {
+export function clipboardText(answer: string, content: ClipboardContent): string | null {
+  if (content === 'answer') return answer.trim() || null
+  return pickCodeBlock(answer)?.code ?? null
+}
+
+/**
+ * Copy a finished answer to the system clipboard, so the user can paste it
+ * straight into an editor or their notes
+ */
+export async function copyAnswerToClipboard(answer: string): Promise<void> {
   if (!settings.codeCopyToClipboard) return
 
-  const block = pickCodeBlock(answer)
-  if (!block) return
+  const text = clipboardText(answer, settings.clipboardContent)
+  if (!text) return
 
   // Asynchronous since Electron 44, like navigator.clipboard
   try {
-    await clipboard.writeText(block.code)
+    await clipboard.writeText(text)
   } catch (error) {
-    console.error('Failed to copy code to the clipboard:', error)
+    console.error('Failed to copy the answer to the clipboard:', error)
   }
 }
 
@@ -287,11 +297,11 @@ export async function saveCodeToDisk(answer: string): Promise<void> {
 }
 
 /**
- * Handle the code block of a finished answer: copy it to the clipboard and/or
- * write it to the configured folder, whichever the user turned on. Both are
- * best-effort and silent.
+ * Handle a finished answer: copy it (or its code block) to the clipboard
+ * and/or write its code block to the configured folder, whichever the user
+ * turned on. Both are best-effort and silent.
  */
-export function handleGeneratedCode(answer: string): void {
-  void copyCodeToClipboard(answer)
+export function handleFinishedAnswer(answer: string): void {
+  void copyAnswerToClipboard(answer)
   void saveCodeToDisk(answer)
 }

@@ -1,4 +1,4 @@
-import { Camera, FileCode, SquareTerminal } from 'lucide-react'
+import { Camera, ClipboardCopy, FileCode, SquareTerminal } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/select'
 import {
   useSettingsStore,
+  type ClipboardContent,
   type CodeNamingMode,
   type ScreenshotDisplay,
   type SnipMode
@@ -37,6 +38,7 @@ export function ScreenshotSection({
     codeFileBaseName,
     codeNamingMode,
     codeCopyToClipboard,
+    clipboardContent,
     updateSetting
   } = useSettingsStore()
 
@@ -112,6 +114,44 @@ export function ScreenshotSection({
         </div>
       </SettingsCard>
 
+      <SettingsCard Icon={ClipboardCopy} title="剪贴板">
+        <div className="space-y-4">
+          <Field
+            label="回答完成后自动复制"
+            note="每次回答写完（含追加截图和追问）自动写入剪贴板，中途停止或出错的不写入。其他应用都能读到剪贴板，剪贴板历史和同步功能也会留下一份"
+          >
+            <Switch
+              className="scale-y-90"
+              checked={codeCopyToClipboard}
+              onCheckedChange={(checked) => updateSetting('codeCopyToClipboard', checked)}
+            />
+          </Field>
+          {codeCopyToClipboard && (
+            <Field
+              label="复制内容"
+              note={
+                clipboardContent === 'answer'
+                  ? '这一轮回答的全部文字，保留 Markdown 格式，不含思考过程'
+                  : '只复制回答里的第一个代码块，可直接粘贴到编辑器；回答里没有代码时不写入'
+              }
+            >
+              <Select
+                value={clipboardContent}
+                onValueChange={(val) => updateSetting('clipboardContent', val as ClipboardContent)}
+              >
+                <SelectTrigger className="w-60 shrink-0 bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="code">第一个代码块（默认）</SelectItem>
+                  <SelectItem value="answer">完整回答</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+        </div>
+      </SettingsCard>
+
       <SettingsCard Icon={FileCode} title="算法题保存到本地">
         <div className="space-y-4">
           <Field label="保存代码到本地" note="开启后，解答里包含代码时会按语言自动保存为源文件">
@@ -164,17 +204,6 @@ export function ScreenshotSection({
               </Field>
             </>
           )}
-
-          <Field
-            label="保存到剪贴板"
-            note="开启后，解答里的代码会自动复制到剪贴板，可直接粘贴到编辑器"
-          >
-            <Switch
-              className="scale-y-90"
-              checked={codeCopyToClipboard}
-              onCheckedChange={(checked) => updateSetting('codeCopyToClipboard', checked)}
-            />
-          </Field>
         </div>
       </SettingsCard>
     </>

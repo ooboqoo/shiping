@@ -31,7 +31,7 @@ import { takeScreenshot } from './take-screenshot'
 import { pickCaptureRegion, pickScreenshot } from './region-picker'
 import type { CaptureRegion } from '../shared/capture-region'
 import { saveScreenshotToDisk } from './save-screenshot'
-import { handleGeneratedCode } from './save-code'
+import { handleFinishedAnswer } from './save-code'
 import { getSolutionStream, getFollowUpStream, getGeneralStream } from './ai'
 import { state, setPageChangeHandler, inModePage } from './state'
 import { settings, getModeProfile, onSettingsChanged } from './settings'
@@ -774,8 +774,8 @@ async function startScreenshotConversation(
     (answer) => {
       if (!answer) return
       conversationMessages.push({ role: 'assistant', content: answer })
-      // 答案已经写完，才处理代码（中途停止或报错不会走到这里）
-      handleGeneratedCode(answer)
+      // 答案已经写完，才复制和保存（中途停止或报错不会走到这里）
+      handleFinishedAnswer(answer)
     },
     { showLoading: true }
   )
@@ -836,8 +836,8 @@ async function appendToConversation(
     (answer) => {
       if (!answer) return
       conversationMessages.push({ role: 'assistant', content: answer })
-      // 答案已经写完，才处理代码（中途停止或报错不会走到这里）
-      handleGeneratedCode(answer)
+      // 答案已经写完，才复制和保存（中途停止或报错不会走到这里）
+      handleFinishedAnswer(answer)
     },
     { showLoading: true }
   )
@@ -1442,7 +1442,7 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
       if (answer) {
         conversationMessages.push({ role: 'assistant', content: answer })
         // 追问也可能给出完整解法，同样处理
-        handleGeneratedCode(answer)
+        handleFinishedAnswer(answer)
       }
     },
     { showLoading: false }

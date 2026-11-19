@@ -201,8 +201,10 @@ export const settings = {
   codeFileBaseName: 'Test',
   /** `sequence` appends a number (Test1, Test2); `overwrite` reuses one name */
   codeNamingMode: 'sequence' as 'sequence' | 'overwrite',
-  /** Copy the code block of a finished answer to the system clipboard */
+  /** Copy a finished answer to the system clipboard, what of it says `clipboardContent` */
   codeCopyToClipboard: false,
+  /** `code`: the answer's first code block; `answer`: the whole answer, Markdown included */
+  clipboardContent: 'code' as ClipboardContent,
   dashscopeApiKey: '',
   /** 手机同步 over the LAN: the app serves the phone page itself, see mobile-sync.ts */
   mobileLanEnabled: false,
@@ -223,6 +225,9 @@ export const settings = {
 }
 
 export type AppSettings = typeof settings
+
+/** What a finished answer puts on the clipboard, see save-code.ts */
+export type ClipboardContent = 'code' | 'answer'
 
 /**
  * The profile a mode sends its requests with. Until the renderer has synced
