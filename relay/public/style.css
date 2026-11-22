@@ -283,7 +283,7 @@ svg {
 main {
   max-width: 760px;
   margin: 0 auto;
-  padding: 14px max(16px, env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom))
+  padding: 14px max(16px, env(safe-area-inset-right)) calc(74px + env(safe-area-inset-bottom))
     max(16px, env(safe-area-inset-left));
 }
 
@@ -783,12 +783,75 @@ html[data-code-wrap='off'] .code-block code {
   animation-delay: 0.4s;
 }
 
+/* ---- Controls: the desktop's buttons, within reach of a thumb ---- */
+
+#controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom))
+    max(10px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px);
+  backdrop-filter: saturate(1.6) blur(14px);
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+#controls button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 46px;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--fg-soft);
+  font-size: 11px;
+  line-height: 1.2;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+}
+
+#controls svg {
+  width: 20px;
+  height: 20px;
+}
+
+#controls button:active {
+  background: var(--border);
+}
+
+#controls .primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+#controls .primary:active {
+  background: color-mix(in srgb, var(--accent) 80%, #000);
+}
+
+/* Waiting on the desktop: a capture takes a moment, and a second tap would start another */
+#controls button[data-pending='1'] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 /* ---- Floating ---- */
 
 #jump {
   position: fixed;
   left: 50%;
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  bottom: calc(74px + env(safe-area-inset-bottom));
   z-index: 10;
   display: inline-flex;
   align-items: center;

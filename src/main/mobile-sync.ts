@@ -10,7 +10,12 @@ import highlightJs from '../../relay/public/vendor/highlight.min.js?raw'
 import { settings, onSettingsChanged } from './settings'
 import { state } from './state'
 import type { AppMode } from '../shared/api-profile'
-import type { MobileState, MobileSyncStatus } from '../shared/mobile'
+import type {
+  MobileCommand,
+  MobileCommandResult,
+  MobileState,
+  MobileSyncStatus
+} from '../shared/mobile'
 
 /**
  * 手机同步: the answers on screen, mirrored to a phone's browser. Two ways out,
@@ -65,6 +70,36 @@ let paging = 0
 export function pageMobile(direction: 1 | -1): void {
   paging += direction
   markMobileDirty()
+}
+
+// ---- What a phone asks for ----
+
+/** The same list as `COMMANDS` in relay/relay.mjs */
+const COMMANDS = new Set<string>(['screenshot', 'append', 'stop', 'pageUp', 'pageDown'])
+
+type CommandHandler = (action: MobileCommand) => MobileCommandResult | Promise<MobileCommandResult>
+
+let commandHandler: CommandHandler | null = null
+
+/**
+ * What runs a phone's command: the actions live in shortcuts.ts, which imports
+ * this module, so it registers the handler here rather than the other way round
+ */
+export function onMobileCommand(handler: CommandHandler): void {
+  commandHandler = handler
+}
+
+/** Run one command for a phone, never throwing: every command gets an answer */
+async function runCommand(action: unknown): Promise<MobileCommandResult> {
+  if (typeof action !== 'string' || !COMMANDS.has(action)) {
+    return { ok: false, message: '不认识的操作' }
+  }
+  if (!commandHandler) return { ok: false, message: '电脑端还没准备好，请稍后再试' }
+  try {
+    return await commandHandler(action as MobileCommand)
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : '操作失败' }
+  }
 }
 
 /**
@@ -194,6 +229,8 @@ function startLan(key: string) {
   const relay = createRelay({
     files: VIEWER_FILES,
     viewerToken: deriveViewerToken(key),
+    // 局域网 has no host socket: the app is the host, so it runs the command here
+    onCommand: (action) => runCommand(action),
     onViewers: (count) => {
       status.lan.viewers = count
       noteViewers()
@@ -313,6 +350,20 @@ function connectRelay(id: string, base: URL, key: string): RelayClient {
         const message = JSON.parse(raw.toString())
         if (message?.type === 'viewers') {
           set({ viewers: Number(message.count) || 0, maxViewers: Number(message.max) || undefined })
+        } else if (message?.type === 'command' && typeof message.rid === 'number') {
+          // A phone asked for something; the relay waits for this answer to
+          // hand back, and the phone's button stays held until it comes
+          void runCommand(message.action).then((result) => {
+            if (socket?.readyState !== WebSocket.OPEN) return
+            socket.send(
+              JSON.stringify({
+                type: 'command-result',
+                rid: message.rid,
+                ok: result.ok !== false,
+                ...(result.message ? { message: result.message } : {})
+              })
+            )
+          })
         }
       } catch {
         // not ours

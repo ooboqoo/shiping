@@ -40,6 +40,7 @@
   const jumpEl = $('jump')
   const toastEl = $('toast')
   const tabs = [...document.querySelectorAll('[data-tab]')]
+  const controlButtons = [...document.querySelectorAll('[data-command]')]
 
   const escapeHtml = (text) =>
     String(text).replace(
@@ -446,6 +447,70 @@
     pageTimer = setTimeout(() => (pageTarget = null), 800)
   }
 
+  // ---- Remote control ----
+
+  /** How long a button waits for the desktop's answer before saying none came */
+  const COMMAND_TIMEOUT = 8000
+  /** Commands sent and not answered yet, by id */
+  const pendingCommands = new Map()
+  let commandSeq = 0
+
+  /** The desktop answered: release the button and pass on what it said */
+  function settleCommand(id, ok, message) {
+    const pending = pendingCommands.get(id)
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pendingCommands.delete(id)
+    delete pending.button.dataset.pending
+    if (!ok) toast(message || '操作失败', 2600)
+    else if (message) toast(message)
+  }
+
+  /** Ask the desktop to act, holding the button until it answers */
+  function sendCommand(action, button) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      toast('电脑还没连上', 2000)
+      return
+    }
+    // A second tap while one is in flight would start a second capture
+    if (button.dataset.pending === '1') return
+    const id = ++commandSeq
+    button.dataset.pending = '1'
+    const timer = setTimeout(
+      () => settleCommand(id, false, '电脑端没有响应，请确认电脑版和中转服务都已更新'),
+      COMMAND_TIMEOUT
+    )
+    pendingCommands.set(id, { button, timer })
+    socket.send(JSON.stringify({ type: 'command', id, action }))
+  }
+
+  /**
+   * 上翻/下翻 turns this page at once: that is what the button is for, and it
+   * works with no connection. The desktop follows when it can, and its answer
+   * needs no toast — the page in front of the user has already moved
+   */
+  function pageBoth(direction) {
+    page(direction)
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    socket.send(
+      JSON.stringify({
+        type: 'command',
+        id: ++commandSeq,
+        action: direction < 0 ? 'pageUp' : 'pageDown'
+      })
+    )
+  }
+
+  for (const button of controlButtons) {
+    button.addEventListener('click', () => {
+      const action = button.dataset.command
+      if (action === 'pageUp') pageBoth(-1)
+      else if (action === 'pageDown') pageBoth(1)
+      // 截图/追加截图/停止生成 wait for the desktop to say how it went
+      else sendCommand(action, button)
+    })
+  }
+
   /** Render what changed; returns whether the tab in view did */
   function renderNow() {
     if (!state) return false
@@ -608,11 +673,19 @@
         }
       } else if (message.type === 'state' && message.data) {
         onState(message.data)
+      } else if (message.type === 'command-result') {
+        settleCommand(message.id, message.ok !== false, message.message)
       }
     }
     ws.onclose = () => {
       if (socket !== ws) return
       socket = null
+      // The answer to whatever was in flight will not come now
+      for (const [id, pending] of pendingCommands) {
+        clearTimeout(pending.timer)
+        delete pending.button.dataset.pending
+        pendingCommands.delete(id)
+      }
       setStatus('offline', '重连中')
       retryLater()
     }

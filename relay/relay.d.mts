@@ -15,6 +15,13 @@ export interface RelayOptions {
   maxViewers?: number
   /** Called whenever a viewer comes or goes */
   onViewers?: (count: number) => void
+  /**
+   * Runs a viewer's command in-process, for 局域网 where the app is the host.
+   * The public relay instead forwards the command to its `/host` socket.
+   */
+  onCommand?: (
+    action: string
+  ) => { ok: boolean; message?: string } | Promise<{ ok: boolean; message?: string }>
   log?: (message: string) => void
 }
 
