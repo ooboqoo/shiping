@@ -52,8 +52,17 @@ export interface MobileState {
  * relay/relay.mjs, which refuses anything else before it reaches the app.
  * Paging is the one the phone also does locally: its buttons move the page in
  * front of the user at once, and the command only scrolls the desktop along.
+ * `screenshotMode` / `conversationMode` are the phone's tabs: they name the mode
+ * rather than toggle it, so two phones tapping the same tab do not switch twice.
  */
-export type MobileCommand = 'screenshot' | 'append' | 'stop' | 'pageUp' | 'pageDown'
+export type MobileCommand =
+  | 'screenshot'
+  | 'append'
+  | 'stop'
+  | 'pageUp'
+  | 'pageDown'
+  | 'screenshotMode'
+  | 'conversationMode'
 
 export interface MobileCommandResult {
   ok: boolean

@@ -515,9 +515,13 @@ export function setIgnoreMouse(ignore: boolean): void {
   broadcastAppState()
 }
 
+/** Phones waiting for the mode page they asked for (`showModeForPhone()`), checked on every page change */
+const modeWaiters = new Set<() => void>()
+
 // Leaving or entering the settings page changes whether the stored preference
 // may be applied, so re-run it on every page change
 setPageChangeHandler(() => {
+  for (const check of modeWaiters) check()
   // Esc 隐藏窗口 lives on 截图模式's page; leaving it ends what it was offered for
   setSnipSession(false)
   // So does the question box of a held 框选 screenshot, which goes with the page
@@ -688,6 +692,48 @@ async function runAnswer(
     // this one wound down, so ending it here would clear the new one's
     if (showLoading && !currentStreamContext) send('ai-loading-end')
   }
+}
+
+/** How long a phone's tab waits for the desktop's page to follow */
+const MODE_SWITCH_TIMEOUT = 3000
+
+/**
+ * Show a mode's page because a phone tapped its tab: the phone shows only what
+ * the desktop does, so its tabs switch the desktop. Unlike `switchMode` it
+ * names the mode, so two phones tapping the same tab do not switch twice, and
+ * it works with the 极简悬浮条 up, which is when the phone is the screen (the
+ * bar follows the page). Answered once the page is up, so a phone told yes
+ * never shows a mode the desktop does not
+ */
+function showModeForPhone(mode: AppMode): MobileCommandResult | Promise<MobileCommandResult> {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { ok: false, message: '电脑端还没准备好，请稍后再试' }
+  }
+  // The settings and help pages are in use at the desktop; a phone does not pull them away
+  if (!inModePage()) {
+    return { ok: false, message: '电脑当前在设置或帮助页，回到截图或对话模式后再切' }
+  }
+  if (onShortcutPage(mode)) return { ok: true }
+  // 截图模式's page stops 对话模式's listening as it mounts; the phone should hear of it
+  const stopsListening = mode === 'screenshot' && state.listening === 'conversation'
+  mainWindow.webContents.send('switch-mode', mode)
+  return new Promise((resolve) => {
+    const done = (result: MobileCommandResult) => {
+      clearTimeout(timer)
+      modeWaiters.delete(check)
+      resolve(result)
+    }
+    const check = () => {
+      if (!onShortcutPage(mode)) return
+      done(stopsListening ? { ok: true, message: '已切到截图模式，监听已停止' } : { ok: true })
+    }
+    const timer = setTimeout(
+      () => done({ ok: false, message: '电脑没有切过去，请再试一次' }),
+      MODE_SWITCH_TIMEOUT
+    )
+    modeWaiters.add(check)
+  })
 }
 
 /** Ask the renderer to show the other mode; it owns the routes */
@@ -1146,15 +1192,18 @@ export function runShortcutAction(
 
 /**
  * What a phone's buttons run. Unlike a shortcut, a phone press cannot see the
- * desktop, so every command says what happened; nothing here switches the mode
- * or moves the window — the phone is asking about what is on screen already.
+ * desktop, so every command says what happened. Only the phone's tabs switch
+ * the mode (`showModeForPhone()`): 截图/追加 off 截图模式's page are refused
+ * rather than switching, and nothing here moves the window.
  *
  * 截图/追加 run in the background after the answer goes out: a capture takes up
  * to a second and the phone should not hold its button down for it. What the
  * capture yields reaches the phone through the state sync, as it does for a
  * shortcut press
  */
-function runMobileCommand(action: MobileCommand): MobileCommandResult {
+function runMobileCommand(
+  action: MobileCommand
+): MobileCommandResult | Promise<MobileCommandResult> {
   switch (action) {
     case 'screenshot':
     case 'append': {
@@ -1180,8 +1229,12 @@ function runMobileCommand(action: MobileCommand): MobileCommandResult {
       return scrollPage(-1) ? { ok: true } : { ok: false, message: '电脑当前没有可以翻的页' }
     case 'pageDown':
       return scrollPage(1) ? { ok: true } : { ok: false, message: '电脑当前没有可以翻的页' }
+    case 'screenshotMode':
+      return showModeForPhone('screenshot')
+    case 'conversationMode':
+      return showModeForPhone('conversation')
     default:
-      // The relay only lets the five above through; 手机 and app out of step
+      // The relay only lets the ones above through; 手机 and app out of step
       return { ok: false, message: '不认识的操作' }
   }
 }

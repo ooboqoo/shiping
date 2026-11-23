@@ -283,3 +283,58 @@ test('a phone command off the mode pages says so instead of acting blindly', (t)
   assert.equal(f.state.inCoderPage, false)
   assert.equal(f.state.inConversationPage, false)
 })
+
+test('a phone tab shows its mode on the desktop, once the page is up', async (t) => {
+  const f = setup(t)
+  const sent = []
+  f.window.webContents.send = (channel, ...args) => sent.push([channel, ...args])
+  // The phone is the screen while the 极简悬浮条 is up, so its tabs still switch
+  f.trigger('toggleMiniBar')
+  sent.length = 0
+  // Already there: nothing to do
+  assert.deepEqual(await f.command('screenshotMode'), { ok: true })
+  assert.deepEqual(sent, [])
+  let answered = null
+  const result = Promise.resolve(f.command('conversationMode')).then((r) => (answered = r))
+  // Named, not toggled: two phones tapping the same tab do not switch twice
+  assert.deepEqual(sent, [['switch-mode', 'conversation']])
+  // Leaving 截图模式 reports before 对话模式's page does
+  f.state.inCoderPage = false
+  f.pageChanged()
+  await Promise.resolve()
+  assert.equal(answered, null)
+  f.state.inConversationPage = true
+  f.pageChanged()
+  assert.deepEqual(await result, { ok: true })
+})
+
+test('a phone tab says when the switch stops listening, and leaves the settings page alone', async (t) => {
+  const f = setup(t)
+  const sent = []
+  f.window.webContents.send = (channel, ...args) => sent.push([channel, ...args])
+  f.state.inCoderPage = false
+  f.state.inConversationPage = true
+  f.state.listening = 'conversation'
+  const result = f.command('screenshotMode')
+  f.state.inConversationPage = false
+  f.state.inCoderPage = true
+  f.pageChanged()
+  assert.deepEqual(await result, { ok: true, message: '已切到截图模式，监听已停止' })
+  // The settings page is in use at the desktop
+  f.state.inCoderPage = false
+  f.state.inSettingsPage = true
+  sent.length = 0
+  assert.deepEqual(await f.command('conversationMode'), {
+    ok: false,
+    message: '电脑当前在设置或帮助页，回到截图或对话模式后再切'
+  })
+  assert.deepEqual(sent, [])
+})
+
+test('a phone tab the desktop never follows is answered no', async (t) => {
+  const f = setup(t)
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const result = f.command('conversationMode')
+  t.mock.timers.tick(3000)
+  assert.deepEqual(await result, { ok: false, message: '电脑没有切过去，请再试一次' })
+})

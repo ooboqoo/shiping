@@ -133,7 +133,7 @@ export function useModePage(mode: AppMode): void {
   }, [])
 
   useEffect(() => {
-    window.api.onSwitchMode(() => navigate(MODE_PATHS[otherMode(mode)]))
+    window.api.onSwitchMode((target) => navigate(MODE_PATHS[target ?? otherMode(mode)]))
     return () => {
       window.api.removeSwitchModeListener()
     }

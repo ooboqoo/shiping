@@ -75,7 +75,15 @@ export function pageMobile(direction: 1 | -1): void {
 // ---- What a phone asks for ----
 
 /** The same list as `COMMANDS` in relay/relay.mjs */
-const COMMANDS = new Set<string>(['screenshot', 'append', 'stop', 'pageUp', 'pageDown'])
+const COMMANDS = new Set<string>([
+  'screenshot',
+  'append',
+  'stop',
+  'pageUp',
+  'pageDown',
+  'screenshotMode',
+  'conversationMode'
+])
 
 type CommandHandler = (action: MobileCommand) => MobileCommandResult | Promise<MobileCommandResult>
 

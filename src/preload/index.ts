@@ -14,7 +14,7 @@ import type { ToolbarActionName, ToolbarButtons } from '../shared/toolbar'
 import type { AvailableUpdate } from '../shared/update'
 import type { MobileSyncStatus } from '../shared/mobile'
 import type { ProxySettings, ProxyDetection, ProxyTestResult } from '../shared/proxy'
-import type { ApiProfile } from '../shared/api-profile'
+import type { ApiProfile, AppMode } from '../shared/api-profile'
 import type {
   ExternalKnowledgeSettings,
   ExternalKnowledgeTestResult
@@ -153,9 +153,9 @@ const api = {
     ipcRenderer.removeAllListeners('cycle-scene')
   },
 
-  // Shortcut or toolbar asked to show the other mode (截图 ↔ 对话)
-  onSwitchMode: (callback: () => void) => {
-    ipcRenderer.on('switch-mode', () => callback())
+  // Shortcut or toolbar asked to show the other mode (截图 ↔ 对话); a phone's tab names the mode
+  onSwitchMode: (callback: (mode?: AppMode) => void) => {
+    ipcRenderer.on('switch-mode', (_event, mode?: AppMode) => callback(mode))
   },
   removeSwitchModeListener: () => {
     ipcRenderer.removeAllListeners('switch-mode')

@@ -60,7 +60,15 @@ export function deriveViewerToken(key) {
  * src/shared/mobile.ts. The list lives here so a phone cannot reach an action
  * the app never meant to expose, even by guessing its name
  */
-export const COMMANDS = new Set(['screenshot', 'append', 'stop', 'pageUp', 'pageDown'])
+export const COMMANDS = new Set([
+  'screenshot',
+  'append',
+  'stop',
+  'pageUp',
+  'pageDown',
+  'screenshotMode',
+  'conversationMode'
+])
 
 /** How long a phone waits for the app to answer a command before it is told it did not */
 const COMMAND_TIMEOUT = 10_000

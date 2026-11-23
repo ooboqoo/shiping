@@ -275,8 +275,13 @@
 
   let state = null
   let tab = 'screenshot'
-  /** The desktop's mode at the last message: the view follows it when it changes */
+  /**
+   * The desktop's mode at the last message. The tab in view is always this one:
+   * the tabs switch the desktop (see Remote control), never just this page
+   */
   let desktopMode = null
+  /** The mode a tab tap asked the desktop for, shown while it is on its way */
+  let modeRequest = null
   /** Where each tab was scrolled to; null scrolls to the bottom (the newest card) */
   const tabScroll = { screenshot: 0, conversation: null }
   /** What each tab last rendered (and what it last showed while in view) */
@@ -296,8 +301,6 @@
     const saved = tabScroll[next]
     scrollTo(0, saved === null ? root.scrollHeight : saved)
   }
-
-  for (const button of tabs) button.addEventListener('click', () => showTab(button.dataset.tab))
 
   /** A dot on the tab out of view whose content changed since it was last looked at */
   function markUnseen() {
@@ -464,26 +467,51 @@
     clearTimeout(pending.timer)
     pendingCommands.delete(id)
     delete pending.button.dataset.pending
+    pending.onDone?.(ok)
     if (!ok) toast(message || '操作失败', 2600)
     else if (message) toast(message)
   }
 
-  /** Ask the desktop to act, holding the button until it answers */
-  function sendCommand(action, button) {
+  /**
+   * Ask the desktop to act, holding the button until it answers. Returns
+   * whether it went out; `onDone(ok)` runs once it is answered or given up on
+   */
+  function sendCommand(action, button, onDone) {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       toast('电脑还没连上', 2000)
-      return
+      return false
     }
     // A second tap while one is in flight would start a second capture
-    if (button.dataset.pending === '1') return
+    if (button.dataset.pending === '1') return false
     const id = ++commandSeq
     button.dataset.pending = '1'
     const timer = setTimeout(
       () => settleCommand(id, false, '电脑端没有响应，请确认电脑版和中转服务都已更新'),
       COMMAND_TIMEOUT
     )
-    pendingCommands.set(id, { button, timer })
+    pendingCommands.set(id, { button, timer, onDone })
     socket.send(JSON.stringify({ type: 'command', id, action }))
+    return true
+  }
+
+  /**
+   * A tab switches the desktop to its mode, and the phone shows only what the
+   * desktop shows. The tab turns at once; refused or unanswered, it turns back
+   */
+  function requestMode(mode, button) {
+    if (mode === tab || modeRequest) return
+    const sent = sendCommand(`${mode}Mode`, button, (ok) => {
+      modeRequest = null
+      if (ok) desktopMode = mode
+      else if (desktopMode) showTab(desktopMode)
+    })
+    if (!sent) return
+    modeRequest = mode
+    showTab(mode)
+  }
+
+  for (const button of tabs) {
+    button.addEventListener('click', () => requestMode(button.dataset.tab, button))
   }
 
   /**
@@ -583,10 +611,9 @@
 
   function onState(next) {
     state = next
-    if (next.mode && next.mode !== desktopMode) {
-      desktopMode = next.mode
-      showTab(next.mode)
-    }
+    if (next.mode) desktopMode = next.mode
+    // A frame sent before the desktop switched must not turn a tapped tab back
+    if (desktopMode && !modeRequest) showTab(desktopMode)
     // An older app sends no `paging`
     if (typeof next.paging === 'number') {
       if (lastPaging !== null) pendingPages += next.paging - lastPaging
@@ -687,6 +714,7 @@
         clearTimeout(pending.timer)
         delete pending.button.dataset.pending
         pendingCommands.delete(id)
+        pending.onDone?.(false)
       }
       setStatus('offline', '重连中')
       retryLater()
