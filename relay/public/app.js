@@ -439,7 +439,9 @@
   let pageTimer = null
 
   function page(pages) {
-    const step = Math.max(innerHeight - $('topbar').offsetHeight - PAGE_OVERLAP, 100)
+    // What is in view lies between the top bar and the button row at the bottom
+    const visible = innerHeight - $('topbar').offsetHeight - $('controls').offsetHeight
+    const step = Math.max(visible - PAGE_OVERLAP, 100)
     const from = pageTarget ?? scrollY
     pageTarget = Math.min(Math.max(from + pages * step, 0), Math.max(maxScroll(), 0))
     scrollTo({ top: pageTarget, behavior: 'smooth' })

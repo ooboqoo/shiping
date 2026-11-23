@@ -1171,11 +1171,8 @@ function runMobileCommand(action: MobileCommand): MobileCommandResult {
       return { ok: true }
     }
     case 'stop': {
-      if (state.inConversationPage) {
-        stopHints()
-        return { ok: true, message: '已停止生成' }
-      }
-      return stopAnswer()
+      const stopped = state.inConversationPage ? stopHints() : stopAnswer()
+      return stopped
         ? { ok: true, message: '已停止生成' }
         : { ok: false, message: '当前没有正在生成的内容' }
     }

@@ -681,19 +681,26 @@ export function requestHint(): void {
   send('conversation-notice', '还没有识别到对方说话')
 }
 
-/** Stop every hint being written, and give up on the withdrawn ones */
-export function stopHints(): void {
+/**
+ * Stop every hint being written, and give up on the withdrawn ones. Returns
+ * whether there was any, for a phone's 停止 that cannot see the desktop
+ */
+export function stopHints(): boolean {
   cancelEarlyHint()
+  let stopped = false
   for (const card of hints) {
     if (card.status === 'streaming') {
       stopStream(card.id)
       card.status = 'stopped'
       publishHint(card)
+      stopped = true
     } else if (card.status === 'waiting') {
       card.status = 'stopped'
       publishHint(card)
+      stopped = true
     }
   }
+  return stopped
 }
 
 export function clearConversation(): void {
