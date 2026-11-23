@@ -40,6 +40,12 @@ function harness(t, extra = {}) {
       markMobileDirty() {
         /* unused mock */
       },
+      pageMobile() {
+        /* unused mock */
+      },
+      onMobileCommand() {
+        /* unused mock */
+      },
       registerMobileSource: (_k, f) => {
         mobile = f
       }

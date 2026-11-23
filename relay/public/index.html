@@ -59,7 +59,7 @@
           <circle cx="12" cy="12" r="3" />
         </svg>
         <div class="title">等待截图</div>
-        <div class="hint">在电脑上按截图快捷键，解答会实时出现在这里</div>
+        <div class="hint">按电脑上的截图快捷键，或点下面的「截图」，解答会实时出现在这里</div>
       </div>
     </template>
     <template id="empty-conversation">
@@ -72,6 +72,39 @@
         <div class="hint">在电脑上进入对话模式并开始监听，对方的话和提示会出现在这里</div>
       </div>
     </template>
+
+    <footer id="controls">
+      <button data-command="pageUp" aria-label="上翻一页">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
+        <span>上翻</span>
+      </button>
+      <button data-command="screenshot" class="primary" aria-label="截图并解答">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"
+          />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        <span>截图</span>
+      </button>
+      <button data-command="append" aria-label="追加截图">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"
+          />
+          <path d="M12 8.5v7M8.5 12h7" />
+        </svg>
+        <span>追加</span>
+      </button>
+      <button data-command="stop" aria-label="停止生成">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" /></svg>
+        <span>停止</span>
+      </button>
+      <button data-command="pageDown" aria-label="下翻一页">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        <span>下翻</span>
+      </button>
+    </footer>
 
     <button id="jump" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>

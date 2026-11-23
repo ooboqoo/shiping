@@ -48,11 +48,12 @@ import { requestHint, stopHints, clearConversation } from './conversation'
 import {
   hasMobileViewers,
   markMobileDirty,
+  onMobileCommand,
   onMobileViewersChanged,
   pageMobile,
   registerMobileSource
 } from './mobile-sync'
-import type { MobileAnswer } from '../shared/mobile'
+import type { MobileAnswer, MobileCommand, MobileCommandResult } from '../shared/mobile'
 
 /**
  * `registered`: the key is held now. `available`: free, but not held, the
@@ -870,6 +871,18 @@ export function watchMainWindowFocus(window: BrowserWindow): void {
   window.on('blur', () => setSnipSession(false))
 }
 
+/**
+ * Step the page on the desktop, the way 上翻/下翻 do. A phone's page press calls
+ * this without `pageMobile`: it has already turned the page in front of the
+ * user, and bumping 手机's counter too would scroll the phone a second time
+ */
+function scrollPage(direction: 1 | -1): boolean {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return false
+  mainWindow.webContents.send(direction < 0 ? 'scroll-page-up' : 'scroll-page-down')
+  return true
+}
+
 const callbacks: Record<string, () => void> = {
   hideOrShowMainWindow: async () => {
     const mainWindow = global.mainWindow
@@ -1062,17 +1075,11 @@ const callbacks: Record<string, () => void> = {
   },
 
   pageUp: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
-    mainWindow.webContents.send('scroll-page-up')
-    pageMobile(-1)
+    if (scrollPage(-1)) pageMobile(-1)
   },
 
   pageDown: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
-    mainWindow.webContents.send('scroll-page-down')
-    pageMobile(1)
+    if (scrollPage(1)) pageMobile(1)
   },
 
   moveMainWindowUp: () => moveMainWindowBy(0, -MOVE_STEP),
@@ -1136,6 +1143,53 @@ export function runShortcutAction(
 ): void {
   callbacks[action]()
 }
+
+/**
+ * What a phone's buttons run. Unlike a shortcut, a phone press cannot see the
+ * desktop, so every command says what happened; nothing here switches the mode
+ * or moves the window — the phone is asking about what is on screen already.
+ *
+ * 截图/追加 run in the background after the answer goes out: a capture takes up
+ * to a second and the phone should not hold its button down for it. What the
+ * capture yields reaches the phone through the state sync, as it does for a
+ * shortcut press
+ */
+function runMobileCommand(action: MobileCommand): MobileCommandResult {
+  switch (action) {
+    case 'screenshot':
+    case 'append': {
+      const mainWindow = global.mainWindow
+      // The capture region belongs to 截图模式's page; on another page there is
+      // nothing it would capture into
+      if (!mainWindow || mainWindow.isDestroyed() || !state.inCoderPage) {
+        return { ok: false, message: '电脑当前不在截图模式' }
+      }
+      if (!screenshotProfileReady(mainWindow)) {
+        return { ok: false, message: '截图模式使用的 AI 配置未填写 API Key' }
+      }
+      void callbacks[action === 'append' ? 'appendScreenshot' : 'takeScreenshot']()
+      return { ok: true }
+    }
+    case 'stop': {
+      if (state.inConversationPage) {
+        stopHints()
+        return { ok: true, message: '已停止生成' }
+      }
+      return stopAnswer()
+        ? { ok: true, message: '已停止生成' }
+        : { ok: false, message: '当前没有正在生成的内容' }
+    }
+    case 'pageUp':
+      return scrollPage(-1) ? { ok: true } : { ok: false, message: '电脑当前没有可以翻的页' }
+    case 'pageDown':
+      return scrollPage(1) ? { ok: true } : { ok: false, message: '电脑当前没有可以翻的页' }
+    default:
+      // The relay only lets the five above through; 手机 and app out of step
+      return { ok: false, message: '不认识的操作' }
+  }
+}
+
+onMobileCommand(runMobileCommand)
 
 /** Whether 截图模式 has a conversation to append a screenshot to */
 export function hasScreenshotConversation(): boolean {

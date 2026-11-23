@@ -19,7 +19,16 @@ import { WebSocketServer, WebSocket } from 'ws'
  *   host   → relay   { type: 'state', data }
  *   relay  → host    { type: 'viewers', count }
  *   relay  → viewer  { type: 'state', data } | { type: 'host', online }
+ *   viewer → relay   { type: 'command', id, action }
+ *   relay  → host    { type: 'command', rid, action }
+ *   host   → relay   { type: 'command-result', rid, ok, message? }
+ *   relay  → viewer  { type: 'command-result', id, ok, message? }
  * The relay never looks inside `data`, so the app can grow its state freely.
+ *
+ * A viewer may ask the app to act — take a screenshot, stop the answer, turn a
+ * page — but only with the actions in `COMMANDS`, and the app itself decides
+ * what each one does. A command without a host to run it is answered with a
+ * refusal rather than left waiting, since the phone's button spins until then.
  *
  * Auth: one secret key. The host presents it as a bearer token; viewers present
  * `deriveViewerToken(key)`, so the QR code on a phone never holds the key
@@ -45,6 +54,18 @@ const PER_MESSAGE_DEFLATE = { threshold: 1024 }
 export function deriveViewerToken(key) {
   return createHmac('sha256', key).update('viewer').digest('hex').slice(0, 32)
 }
+
+/**
+ * What a viewer may ask the app to do; kept in step with `MobileCommand` in
+ * src/shared/mobile.ts. The list lives here so a phone cannot reach an action
+ * the app never meant to expose, even by guessing its name
+ */
+export const COMMANDS = new Set(['screenshot', 'append', 'stop', 'pageUp', 'pageDown'])
+
+/** How long a phone waits for the app to answer a command before it is told it did not */
+const COMMAND_TIMEOUT = 10_000
+/** Two commands from one phone this close together are a mistap or a stuck finger */
+const COMMAND_MIN_GAP = 200
 
 /**
  * A request's path and query, or null when `URL` cannot parse the target: `//[`
@@ -90,6 +111,7 @@ const SECURITY_HEADERS = {
  * @param {string} [options.hostKey] What the host must present; without one `/host` is refused
  * @param {number} [options.maxViewers]
  * @param {(count: number) => void} [options.onViewers] Called whenever a viewer comes or goes
+ * @param {(action: string) => { ok: boolean, message?: string } | Promise<{ ok: boolean, message?: string }>} [options.onCommand] Runs a viewer's command in-process, for 局域网 where the app is the host
  * @param {(message: string) => void} [options.log]
  */
 export function createRelay({
@@ -98,6 +120,7 @@ export function createRelay({
   hostKey = '',
   maxViewers = 10,
   onViewers = () => {},
+  onCommand = null,
   log = () => {}
 }) {
   // Compressed and fingerprinted once: the files only change with a redeploy,
@@ -167,6 +190,9 @@ export function createRelay({
   let lastState = null
   /** @type {Set<WebSocket>} */
   const viewers = new Set()
+  /** Commands sent to the host, by `rid`, each with the viewer waiting for the answer */
+  const pendingCommands = new Map()
+  let commandSeq = 0
 
   /** In-process (局域网) the app itself is the host, so it is online for as long as the relay runs */
   const hostOnline = () => !hostKey || host !== null
@@ -178,6 +204,68 @@ export function createRelay({
   function viewersChanged() {
     onViewers(viewers.size)
     if (host) sendJSON(host, { type: 'viewers', count: viewers.size, max: maxViewers })
+  }
+
+  /**
+   * Answer a viewer's command. Every command gets one: the phone's button stays
+   * held until its answer arrives, and a command that simply vanished would
+   * leave it held for good
+   */
+  function commandResult(socket, id, ok, message) {
+    sendJSON(socket, { type: 'command-result', id, ok, ...(message ? { message } : {}) })
+  }
+
+  /** Nothing will answer these now, so say so instead of letting them time out one by one */
+  function failPendingCommands(message) {
+    for (const [rid, pending] of pendingCommands) {
+      clearTimeout(pending.timer)
+      pendingCommands.delete(rid)
+      commandResult(pending.viewer, pending.id, false, message)
+    }
+  }
+
+  /**
+   * A viewer's command goes to the host, which answers with the same `rid`; in
+   * 局域网 there is no host socket, so `onCommand` runs it here. Called and not
+   * awaited: a slow command must not hold up the socket's other frames
+   */
+  async function runCommand(viewer, message) {
+    const id = Number(message.id)
+    if (!Number.isFinite(id)) return
+    if (!COMMANDS.has(message.action)) {
+      commandResult(viewer, id, false, '不认识的操作')
+      return
+    }
+    if (Date.now() - (viewer.lastCommandAt || 0) < COMMAND_MIN_GAP) {
+      commandResult(viewer, id, false, '操作太快，请稍后再试')
+      return
+    }
+    viewer.lastCommandAt = Date.now()
+
+    if (host) {
+      const rid = ++commandSeq
+      const timer = setTimeout(() => {
+        pendingCommands.delete(rid)
+        commandResult(viewer, id, false, '电脑端没有响应，请确认电脑版和中转服务都已更新')
+      }, COMMAND_TIMEOUT)
+      pendingCommands.set(rid, { viewer, id, timer })
+      sendJSON(host, { type: 'command', rid, action: message.action })
+      return
+    }
+
+    if (onCommand) {
+      let result
+      try {
+        result = (await onCommand(message.action)) || {}
+      } catch (error) {
+        commandResult(viewer, id, false, error?.message || '执行失败')
+        return
+      }
+      commandResult(viewer, id, result.ok !== false, result.message)
+      return
+    }
+
+    commandResult(viewer, id, false, '电脑不在线')
   }
 
   function reject(socket, status, text) {
@@ -220,6 +308,8 @@ export function createRelay({
     // takes over; the old one must not keep feeding viewers
     if (host) host.close(4000, 'replaced')
     host = ws
+    // The replaced app can no longer answer what viewers already asked
+    failPendingCommands('电脑端已重连，请再试一次')
     log('host connected')
     for (const viewer of viewers) sendJSON(viewer, { type: 'host', online: true })
     sendJSON(ws, { type: 'viewers', count: viewers.size, max: maxViewers })
@@ -231,7 +321,15 @@ export function createRelay({
       } catch {
         return
       }
-      if (message?.type === 'state') publish(message.data)
+      if (message?.type === 'state') {
+        publish(message.data)
+      } else if (message?.type === 'command-result') {
+        const pending = pendingCommands.get(message.rid)
+        if (!pending) return
+        pendingCommands.delete(message.rid)
+        clearTimeout(pending.timer)
+        commandResult(pending.viewer, pending.id, message.ok !== false, message.message)
+      }
     })
 
     ws.on('close', () => {
@@ -239,6 +337,7 @@ export function createRelay({
       if (host !== ws) return
       host = null
       log('host disconnected')
+      failPendingCommands('电脑已断开')
       for (const viewer of viewers) sendJSON(viewer, { type: 'host', online: false })
     })
     ws.on('error', (error) => log(`host socket: ${error.message}`))
@@ -251,6 +350,18 @@ export function createRelay({
     sendJSON(ws, { type: 'host', online: hostOnline() })
     if (lastState) ws.send(lastState)
     viewersChanged()
+
+    ws.on('message', (raw) => {
+      let message
+      try {
+        message = JSON.parse(raw.toString())
+      } catch {
+        return
+      }
+      // Only commands: a viewer has nothing else to say, and a state frame from
+      // one would let it write the page every other phone is reading
+      if (message?.type === 'command') void runCommand(ws, message)
+    })
 
     ws.on('close', () => {
       viewers.delete(ws)
@@ -282,6 +393,7 @@ export function createRelay({
 
   function close() {
     clearInterval(pinger)
+    failPendingCommands('中转服务已关闭')
     for (const ws of wss.clients) ws.terminate()
     server.close()
   }

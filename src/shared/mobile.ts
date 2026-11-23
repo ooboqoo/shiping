@@ -47,6 +47,20 @@ export interface MobileState {
   conversation: MobileConversation
 }
 
+/**
+ * What a phone may ask the desktop to do. Kept in step with `COMMANDS` in
+ * relay/relay.mjs, which refuses anything else before it reaches the app.
+ * Paging is the one the phone also does locally: its buttons move the page in
+ * front of the user at once, and the command only scrolls the desktop along.
+ */
+export type MobileCommand = 'screenshot' | 'append' | 'stop' | 'pageUp' | 'pageDown'
+
+export interface MobileCommandResult {
+  ok: boolean
+  /** Shown on the phone as a toast; absent when there is nothing to say */
+  message?: string
+}
+
 export type MobileLinkState = 'off' | 'starting' | 'on' | 'error'
 
 export interface MobileSyncStatus {

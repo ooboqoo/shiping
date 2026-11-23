@@ -13,6 +13,7 @@ function setup(t) {
   let onPageChange = noop
   let viewers = false
   let onViewersChanged = noop
+  let commandHandler = null
   let picker = async () => null
   const window = {
     position: [100, 100],
@@ -112,6 +113,10 @@ function setup(t) {
         onViewersChanged = fn
       },
       markMobileDirty: noop,
+      pageMobile: noop,
+      onMobileCommand: (fn) => {
+        commandHandler = fn
+      },
       registerMobileSource: noop
     }
   })
@@ -147,6 +152,8 @@ function setup(t) {
       viewers = watching
       onViewersChanged()
     },
+    // A phone's button press, as relay/relay.mjs hands it to the app
+    command: (action) => commandHandler(action),
     miniVisible: () => miniVisible,
     pick: (fn) => {
       picker = fn
@@ -261,4 +268,18 @@ test('mini bar clicks are checked against its own buttons, not the toolbar mode'
   assert.equal(f.miniVisible(), true)
   assert.equal(f.triggerOnMiniBar('toggleMiniBar', 'conversation'), true)
   assert.equal(f.miniVisible(), false)
+})
+
+test('a phone command off the mode pages says so instead of acting blindly', (t) => {
+  const f = setup(t)
+  // 设置页: no capture region and no page to turn
+  f.state.inCoderPage = false
+  f.state.inSettingsPage = true
+  assert.deepEqual(f.command('screenshot'), { ok: false, message: '电脑当前不在截图模式' })
+  assert.deepEqual(f.command('append'), { ok: false, message: '电脑当前不在截图模式' })
+  assert.deepEqual(f.command('pageUp'), { ok: false, message: '电脑当前没有可以翻的页' })
+  assert.deepEqual(f.command('pageDown'), { ok: false, message: '电脑当前没有可以翻的页' })
+  // The phone's press never leaves the page, unlike a shortcut
+  assert.equal(f.state.inCoderPage, false)
+  assert.equal(f.state.inConversationPage, false)
 })

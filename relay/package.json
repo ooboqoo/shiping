@@ -2,7 +2,7 @@
   "name": "shiping-relay",
   "version": "0.1.0",
   "private": true,
-  "description": "Relay between the desktop app and phones: the app pushes its state, phones watch it",
+  "description": "Relay between the desktop app and phones: the app pushes its state, phones watch it and can press its buttons",
   "type": "module",
   "scripts": {
     "start": "node server.mjs"
