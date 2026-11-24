@@ -149,6 +149,11 @@ svg {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
 }
 
+/* Waiting on the desktop to finish switching: still tappable to reverse */
+.segmented button[data-pending='1'] {
+  opacity: 0.72;
+}
+
 /* Something changed on the tab not in view */
 .unseen {
   position: absolute;

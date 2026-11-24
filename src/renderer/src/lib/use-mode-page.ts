@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { useSettingsStore, type AppMode } from './store/settings'
 import { useAppStore } from './store/app'
@@ -19,12 +18,12 @@ export const otherMode = (mode: AppMode): AppMode =>
   mode === 'screenshot' ? 'conversation' : 'screenshot'
 
 /**
- * What both mode pages do alike: tell main which page is up, apply the window
- * opacity, and answer the shortcuts that act on "the current mode" — its AI
- * profile, its prompt scene, and switching to the other mode.
+ * What both mode pages do alike: apply the window opacity, remember the last
+ * mode, and answer the shortcuts that act on "the current mode" (its AI
+ * profile and its prompt scene). Active-page reporting and `switch-mode` live
+ * at the router root (`RouteStateController` in App.tsx) so switches stay atomic.
  */
 export function useModePage(mode: AppMode): void {
-  const navigate = useNavigate()
   const opacity = useSettingsStore((state) => state.opacity)
   const syncAppState = useAppStore((state) => state.syncAppState)
 
@@ -38,14 +37,6 @@ export function useModePage(mode: AppMode): void {
   // The next start opens where the user left off
   useEffect(() => {
     useSettingsStore.getState().updateSetting('lastMode', mode)
-  }, [mode])
-
-  useEffect(() => {
-    const key = mode === 'screenshot' ? 'inCoderPage' : 'inConversationPage'
-    window.api.updateAppState({ [key]: true })
-    return () => {
-      window.api.updateAppState({ [key]: false })
-    }
   }, [mode])
 
   useEffect(() => {
@@ -131,11 +122,4 @@ export function useModePage(mode: AppMode): void {
       window.api.removeExternalKnowledgeErrorListener()
     }
   }, [])
-
-  useEffect(() => {
-    window.api.onSwitchMode((target) => navigate(MODE_PATHS[target ?? otherMode(mode)]))
-    return () => {
-      window.api.removeSwitchModeListener()
-    }
-  }, [mode, navigate])
 }

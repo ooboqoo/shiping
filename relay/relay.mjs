@@ -75,8 +75,10 @@ export const COMMANDS = new Set([
 
 /** How long a phone waits for the app to answer a command before it is told it did not */
 const COMMAND_TIMEOUT = 10_000
-/** Two commands from one phone this close together are a mistap or a stuck finger */
+/** Two heavy commands from one phone this close together are a mistap or a stuck finger */
 const COMMAND_MIN_GAP = 200
+/** Cheap, idempotent UI navigation actions that should not be blocked by (or trigger) the cooldown */
+const UNTHROTTLED_COMMANDS = new Set(['pageUp', 'pageDown', 'screenshotMode', 'conversationMode'])
 
 /**
  * A request's path and query, or null when `URL` cannot parse the target: `//[`
@@ -247,11 +249,13 @@ export function createRelay({
       commandResult(viewer, id, false, '不认识的操作')
       return
     }
-    if (Date.now() - (viewer.lastCommandAt || 0) < COMMAND_MIN_GAP) {
-      commandResult(viewer, id, false, '操作太快，请稍后再试')
-      return
+    if (!UNTHROTTLED_COMMANDS.has(message.action)) {
+      if (Date.now() - (viewer.lastCommandAt || 0) < COMMAND_MIN_GAP) {
+        commandResult(viewer, id, false, '操作太快，请稍后再试')
+        return
+      }
+      viewer.lastCommandAt = Date.now()
     }
-    viewer.lastCommandAt = Date.now()
 
     if (host) {
       const rid = ++commandSeq

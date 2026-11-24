@@ -284,6 +284,10 @@
   let desktopMode = null
   /** The mode a tab tap asked the desktop for, shown while it is on its way */
   let modeRequest = null
+  /** A later tab tap made while `modeRequest` is in flight, sent once it settles */
+  let queuedMode = null
+  /** Tab shown before the current request started, to revert if `desktopMode` is still unknown */
+  let modeFallback = null
   /** Where each tab was scrolled to; null scrolls to the bottom (the newest card) */
   const tabScroll = { screenshot: 0, conversation: null }
   /** What each tab last rendered (and what it last showed while in view) */
@@ -503,24 +507,59 @@
     return true
   }
 
-  /**
-   * A tab switches the desktop to its mode, and the phone shows only what the
-   * desktop shows. The tab turns at once; refused or unanswered, it turns back
-   */
-  function requestMode(mode, button) {
-    if (mode === tab || modeRequest) return
+  const tabButton = (mode) => tabs.find((button) => button.dataset.tab === mode)
+
+  function dispatchMode(mode) {
+    const button = tabButton(mode)
+    if (!button) return false
     const sent = sendCommand(`${mode}Mode`, button, (ok) => {
       modeRequest = null
       if (ok) desktopMode = mode
-      else if (desktopMode) showTab(desktopMode)
+      const next = queuedMode
+      queuedMode = null
+      if (next) {
+        if (next === desktopMode) {
+          modeFallback = null
+          showTab(desktopMode)
+        } else if (ok && dispatchMode(next)) {
+          return
+        } else {
+          const back = desktopMode || modeFallback
+          modeFallback = null
+          if (back) showTab(back)
+        }
+        return
+      }
+      const back = desktopMode || modeFallback
+      modeFallback = null
+      if (!ok && back) showTab(back)
     })
-    if (!sent) return
+    if (!sent) return false
     modeRequest = mode
+    return true
+  }
+
+  /**
+   * A tab switches the desktop to its mode, and the phone shows only what the
+   * desktop shows. The tab turns at once; a tap while a switch is in flight
+   * queues the latest target instead of being dropped; refused or unanswered,
+   * it turns back
+   */
+  function requestMode(mode) {
+    if (mode === tab) return
+    if (modeRequest) {
+      queuedMode = mode
+      showTab(mode)
+      return
+    }
+    const previous = tab
+    if (!dispatchMode(mode)) return
+    modeFallback = desktopMode || previous
     showTab(mode)
   }
 
   for (const button of tabs) {
-    button.addEventListener('click', () => requestMode(button.dataset.tab, button))
+    button.addEventListener('click', () => requestMode(button.dataset.tab))
   }
 
   /**
@@ -722,6 +761,7 @@
     ws.onclose = () => {
       if (socket !== ws) return
       socket = null
+      queuedMode = null
       // The answer to whatever was in flight will not come now
       for (const [id, pending] of pendingCommands) {
         clearTimeout(pending.timer)

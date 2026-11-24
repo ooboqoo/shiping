@@ -1,5 +1,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const vm = require('node:vm')
 const { WebSocket } = require('ws')
 
 const FILES = { '/': { body: '<!doctype html>', type: 'text/html' } }
@@ -178,4 +181,201 @@ test('a viewer cannot write the state other phones read', async (t) => {
     new Promise((resolve) => setTimeout(() => resolve('nothing'), 300))
   ])
   assert.equal(seen, 'nothing')
+})
+
+test('mode switches and paging are not blocked by the heavy-command cooldown', async (t) => {
+  const ran = []
+  const { base, token } = await startRelay(t, {
+    hostKey: '',
+    onCommand: async (action) => {
+      ran.push(action)
+      return { ok: true }
+    }
+  })
+  const guest = await viewerOf(t, base, token)
+  const guestReader = reader(guest)
+
+  guest.send(JSON.stringify({ type: 'command', id: 10, action: 'pageDown' }))
+  guest.send(JSON.stringify({ type: 'command', id: 11, action: 'conversationMode' }))
+  guest.send(JSON.stringify({ type: 'command', id: 12, action: 'screenshotMode' }))
+  guest.send(JSON.stringify({ type: 'command', id: 13, action: 'screenshot' }))
+
+  const results = []
+  for (let i = 0; i < 4; i++) {
+    results.push(await guestReader.until((m) => m.type === 'command-result'))
+  }
+  assert.deepEqual(
+    results.map((r) => [r.id, r.ok]),
+    [
+      [10, true],
+      [11, true],
+      [12, true],
+      [13, true]
+    ]
+  )
+  assert.deepEqual(ran, ['pageDown', 'conversationMode', 'screenshotMode', 'screenshot'])
+})
+
+function phoneHarness() {
+  const makeNode = (dataset = {}) => {
+    const classes = new Set()
+    const listeners = new Map()
+    return {
+      dataset: { ...dataset },
+      hidden: false,
+      innerHTML: '',
+      textContent: '',
+      className: '',
+      offsetHeight: 0,
+      lastElementChild: { textContent: '' },
+      classList: {
+        toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)),
+        contains: (name) => classes.has(name)
+      },
+      setAttribute() {
+        /* unused mock */
+      },
+      querySelectorAll: () => [],
+      addEventListener(type, fn) {
+        if (!listeners.has(type)) listeners.set(type, [])
+        listeners.get(type).push(fn)
+      },
+      click() {
+        for (const fn of listeners.get('click') || []) fn({ target: this })
+      }
+    }
+  }
+  const nodes = new Map()
+  const get = (id) => {
+    if (!nodes.has(id)) nodes.set(id, makeNode())
+    return nodes.get(id)
+  }
+  const screenshotTab = makeNode({ tab: 'screenshot' })
+  screenshotTab.classList.toggle('active', true)
+  const conversationTab = makeNode({ tab: 'conversation' })
+  const tabs = [screenshotTab, conversationTab]
+  const sent = []
+
+  class FakeSocket {
+    constructor() {
+      this.readyState = 1
+      context.socket = this
+    }
+    send(raw) {
+      sent.push(JSON.parse(raw))
+    }
+  }
+  FakeSocket.OPEN = 1
+
+  const noop = () => undefined
+  const timers = new Set()
+  const context = {
+    URL,
+    URLSearchParams,
+    location: { href: 'http://localhost/#t=tok', hash: '#t=tok', protocol: 'http:' },
+    localStorage: { getItem: () => '', setItem: noop },
+    document: {
+      documentElement: { dataset: {}, scrollHeight: 0 },
+      visibilityState: 'visible',
+      getElementById: get,
+      querySelectorAll: (sel) => (sel === '[data-tab]' ? tabs : []),
+      addEventListener: noop
+    },
+    window: { isSecureContext: false },
+    navigator: {},
+    marked: { use: noop, parse: (x) => x },
+    hljs: {},
+    addEventListener: noop,
+    setTimeout: (fn, ms) => {
+      const id = setTimeout(fn, ms)
+      timers.add(id)
+      return id
+    },
+    clearTimeout: (id) => {
+      timers.delete(id)
+      clearTimeout(id)
+    },
+    requestAnimationFrame: (f) => f(),
+    innerHeight: 500,
+    scrollY: 0,
+    scrollTo: noop,
+    scrollBy: noop,
+    fetch: async () => ({ status: 200 }),
+    WebSocket: FakeSocket
+  }
+
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, '../relay/public/app.js'), 'utf8'),
+    context
+  )
+
+  return {
+    tabs: { screenshot: screenshotTab, conversation: conversationTab },
+    sent,
+    activeTab: () => (conversationTab.classList.contains('active') ? 'conversation' : 'screenshot'),
+    async ready() {
+      await new Promise((r) => setImmediate(r))
+    },
+    receive(message) {
+      context.socket.onmessage({ data: JSON.stringify(message) })
+    },
+    close() {
+      context.socket.onclose()
+    },
+    cleanup() {
+      for (const id of timers) clearTimeout(id)
+      timers.clear()
+    }
+  }
+}
+
+test('phone queues a reverse tab tap while a mode switch is in flight and reverts cleanly on failure', async (t) => {
+  const p = phoneHarness()
+  t.after(() => p.cleanup())
+  await p.ready()
+
+  // Before any state arrives, a refused switch still falls back to the tab shown before the tap
+  p.tabs.conversation.click()
+  assert.equal(p.activeTab(), 'conversation')
+  assert.equal(p.sent.length, 1)
+  assert.equal(p.sent[0].action, 'conversationMode')
+  p.receive({ type: 'command-result', id: p.sent[0].id, ok: false, message: 'busy' })
+  assert.equal(p.activeTab(), 'screenshot')
+
+  // Receive initial state, then switch conversation -> screenshot while #1 is still in flight
+  p.receive({ type: 'state', data: { v: 1, mode: 'screenshot', screenshot: {}, conversation: {} } })
+  p.tabs.conversation.click()
+  assert.equal(p.activeTab(), 'conversation')
+  assert.equal(p.sent.length, 2)
+  assert.equal(p.sent[1].action, 'conversationMode')
+
+  // Tapping back while in flight updates UI immediately and queues screenshotMode
+  p.tabs.screenshot.click()
+  assert.equal(p.activeTab(), 'screenshot')
+  assert.equal(p.sent.length, 2)
+
+  // Once conversationMode completes, queued screenshotMode goes out automatically
+  p.receive({ type: 'command-result', id: p.sent[1].id, ok: true })
+  assert.equal(p.sent.length, 3)
+  assert.equal(p.sent[2].action, 'screenshotMode')
+  p.receive({ type: 'command-result', id: p.sent[2].id, ok: true })
+  assert.equal(p.activeTab(), 'screenshot')
+
+  // Tapping conversation -> screenshot -> conversation while in flight sends no redundant command
+  p.tabs.conversation.click()
+  p.tabs.screenshot.click()
+  p.tabs.conversation.click()
+  assert.equal(p.sent.length, 4)
+  assert.equal(p.sent[3].action, 'conversationMode')
+  p.receive({ type: 'command-result', id: p.sent[3].id, ok: true })
+  assert.equal(p.sent.length, 4)
+  assert.equal(p.activeTab(), 'conversation')
+
+  // Socket close while a switch and queued reversal are in flight reverts cleanly without sending
+  p.tabs.screenshot.click()
+  p.tabs.conversation.click()
+  const countBeforeClose = p.sent.length
+  p.close()
+  assert.equal(p.sent.length, countBeforeClose)
+  assert.equal(p.activeTab(), 'conversation')
 })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HashRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
 import { Toaster, toast } from 'sonner'
 import CoderPage from '@/coder'
@@ -12,7 +12,7 @@ import { useAppStore } from '@/lib/store/app'
 import { getCloneableFields } from '@/lib/utils'
 import { applyTheme } from '@/lib/theme'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
-import { MODE_PATHS } from '@/lib/use-mode-page'
+import { MODE_PATHS, otherMode } from '@/lib/use-mode-page'
 import { stopAudioCapture } from '@/lib/audio-capture'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 
@@ -115,8 +115,10 @@ export default function App() {
           <Route path="help" element={<HelpPage />} />
           <Route path="toolbar" element={<OverlayToolbar />} />
         </Routes>
-        {/* After the routes: effects run in tree order, so the page tells main
-            which mode is up (the toolbar's buttons and width) before this shows it */}
+        {/* After the routes: effects run in tree order, so the page's listeners
+            mount first, RouteStateController tells main which page is up in one
+            atomic update, and ToolbarVisibilityController shows it last */}
+        <RouteStateController />
         <ToolbarVisibilityController />
       </HashRouter>
 
@@ -158,6 +160,55 @@ function MiniBarController() {
     window.api.onMiniBarEntered(() => navigate(MODE_PATHS[useSettingsStore.getState().lastMode]))
     return () => window.api.removeMiniBarEnteredListener()
   }, [navigate])
+
+  return null
+}
+
+/**
+ * Reports the active route to main in a single atomic IPC update (avoiding a
+ * brief gap where neither mode page is active during a switch) and keeps the
+ * `switch-mode` listener registered for the life of the main window so a switch
+ * arriving mid-transition is never dropped. Skipped in the toolbar window,
+ * which renders this same app at `/toolbar`.
+ */
+function RouteStateController() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const pathnameRef = useRef(location.pathname)
+  const navigateRef = useRef(navigate)
+
+  useLayoutEffect(() => {
+    pathnameRef.current = location.pathname
+    navigateRef.current = navigate
+  }, [location.pathname, navigate])
+
+  useEffect(() => {
+    if (location.pathname === '/toolbar') return
+    void window.api.updateAppState({
+      inCoderPage: location.pathname === MODE_PATHS.screenshot,
+      inConversationPage: location.pathname === MODE_PATHS.conversation,
+      inSettingsPage: location.pathname === '/settings'
+    })
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (pathnameRef.current === '/toolbar') return
+    window.api.onSwitchMode((target) => {
+      const pathname = pathnameRef.current
+      const current =
+        pathname === MODE_PATHS.screenshot
+          ? 'screenshot'
+          : pathname === MODE_PATHS.conversation
+            ? 'conversation'
+            : null
+      if (!current) return
+      const next = target ?? otherMode(current)
+      if (next !== current) navigateRef.current(MODE_PATHS[next])
+    })
+    return () => {
+      window.api.removeSwitchModeListener()
+    }
+  }, [])
 
   return null
 }

@@ -89,19 +89,6 @@ export default function SettingsPage() {
     contentRef.current?.scrollTo({ top: 0 })
   }, [tab])
 
-  /**
-   * Click-through is suspended while this page is up — the switch that turns
-   * it back off lives here, so letting it apply would swallow the very clicks
-   * needed to undo it. Main keeps the preference and applies it on the way out,
-   * so the switch still reflects what the user chose.
-   */
-  useEffect(() => {
-    window.api.updateAppState({ inSettingsPage: true })
-    return () => {
-      window.api.updateAppState({ inSettingsPage: false })
-    }
-  }, [])
-
   useEffect(() => {
     window.api.onSyncAppState((state) => syncAppState(state))
     return () => {
