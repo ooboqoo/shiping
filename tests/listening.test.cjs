@@ -6,6 +6,7 @@ for (const phase of ['capture', 'asr']) {
   test(`${phase} startup failure uses the correct guidance`, async (t) => {
     t.mock.method(console, 'error', () => {})
     const errors = []
+    const reported = []
     const state = {
       setIsTranscribing() {
         /* unused mock */
@@ -16,7 +17,8 @@ for (const phase of ['capture', 'asr']) {
         stopTranscription: async () => {},
         startTranscription: async () => {
           if (phase === 'asr') throw new Error('InvalidApiKey')
-        }
+        },
+        reportListenFailure: async (message) => reported.push(message)
       }
     }
     const api = createLoader({
@@ -50,6 +52,8 @@ for (const phase of ['capture', 'asr']) {
       assert.match(errors.at(-1), /InvalidApiKey/)
       assert.doesNotMatch(errors.at(-1), /screen recording/)
     } else assert.equal(errors.at(-1), 'screen recording permission guidance')
+    // Phones are told the same, a capture failure being known only to the page
+    assert.deepEqual(reported, [errors.at(-1)])
   })
 }
 test('canceling an in-flight capture cannot stop or mark a newer start as failed', async () => {

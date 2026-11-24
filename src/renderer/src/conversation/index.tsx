@@ -10,7 +10,7 @@ import { PrerequisitesChecker } from '@/coder/PrerequisitesChecker'
 import { TranscriptPanel } from './TranscriptPanel'
 import { HintPanel } from './HintPanel'
 import { ConversationStatusBar } from './ConversationStatusBar'
-import { toggleHintMode, toggleListening } from './listening'
+import { setListening, toggleHintMode } from './listening'
 
 /**
  * 对话模式: what the other side says on the left, the hints for it on the right.
@@ -92,7 +92,7 @@ function useConversationEvents() {
 
   useEffect(() => {
     const transcription = useTranscriptionStore.getState()
-    window.api.onToggleTranscription(toggleListening)
+    window.api.onToggleTranscription(setListening)
     window.api.onTranscriptionError((message) => {
       useConversationStore.getState().setErrorMessage(message)
       stopAudioCapture()

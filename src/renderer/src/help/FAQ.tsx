@@ -203,8 +203,9 @@ const faqs = [
     answer: (
       <span>
         可以。在「设置 → 手机同步」打开「局域网」，手机连同一个 Wi-Fi
-        扫码即可；手机用流量的话用「公网中转」，需要自己的服务器。手机只显示内容，底部有一排按钮
-        （截图、追加截图、停止生成、上翻 / 下翻）可以让电脑做这些动作；电脑上按
+        扫码即可；手机用流量的话用「公网中转」，需要自己的服务器。手机顶部可以切换电脑的模式，底部的按钮随模式换
+        （截图 / 追加截图，或出提示 / 开始监听，加上停止生成和上翻 /
+        下翻），可以让电脑做这些动作；电脑上按
         <ShortcutRenderer shortcut="CommandOrControl+J" className="text-xs mx-1" />/
         <ShortcutRenderer shortcut="CommandOrControl+K" className="text-xs mx-1" />
         翻页时手机也跟着翻。电脑能打开、手机打不开，多半是防火墙没放行当前网络（Windows 换了 Wi-Fi

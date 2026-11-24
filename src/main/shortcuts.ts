@@ -1233,6 +1233,25 @@ function runMobileCommand(
       return showModeForPhone('screenshot')
     case 'conversationMode':
       return showModeForPhone('conversation')
+    case 'hint':
+      if (!state.inConversationPage) return { ok: false, message: '电脑当前不在对话模式' }
+      return requestHint() ? { ok: true } : { ok: false, message: '还没有识别到对方说话' }
+    case 'startListening':
+    case 'stopListening': {
+      const mainWindow = global.mainWindow
+      // The page that captures the audio is 对话模式's; elsewhere nothing would hear it
+      if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) {
+        return { ok: false, message: '电脑当前不在对话模式' }
+      }
+      const want = action === 'startListening'
+      if (want && !settings.dashscopeApiKey) {
+        return { ok: false, message: '电脑上还没填写百炼平台 API Key，无法监听' }
+      }
+      // Answered at once: starting takes seconds, and the phone's button follows
+      // `listening` in the state; a failure reaches it as `listenError`
+      mainWindow.webContents.send('toggle-transcription', want)
+      return { ok: true }
+    }
     default:
       // The relay only lets the ones above through; 手机 and app out of step
       return { ok: false, message: '不认识的操作' }

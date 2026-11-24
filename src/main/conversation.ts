@@ -654,9 +654,10 @@ async function startHint(
 /**
  * The shortcut / button: a hint now. Brings the card being written (or waiting)
  * up to date, else opens one for everything not yet hinted, else rewrites the
- * last hint.
+ * last hint. Returns false when there is nothing at all to hint yet, for a
+ * phone's 出提示 that cannot see the notice on the desktop.
  */
-export function requestHint(): void {
+export function requestHint(): boolean {
   const latest = utterances.findLast((u) => u.source !== 'microphone')
   const current = [...hints]
     .reverse()
@@ -665,20 +666,21 @@ export function requestHint(): void {
   if (current) {
     const toId = Math.max(current.toId, latest?.id ?? 0)
     // Already writing exactly this; starting over would only lose what is there
-    if (current.status === 'streaming' && toId === current.toId) return
+    if (current.status === 'streaming' && toId === current.toId) return true
     void startHint(current, current.fromId, toId, 'manual')
-    return
+    return true
   }
   if (latest && latest.id > hintedUpTo) {
     void startHint(createCard(hintedUpTo + 1, latest.id), hintedUpTo + 1, latest.id, 'manual')
-    return
+    return true
   }
   const last = hints.at(-1)
   if (last) {
     void startHint(last, last.fromId, last.toId, 'manual', last.text)
-    return
+    return true
   }
   send('conversation-notice', '还没有识别到对方说话')
+  return false
 }
 
 /**
@@ -803,3 +805,9 @@ ipcMain.handle('conversation:get-snapshot', () => getSnapshot())
 ipcMain.handle('conversation:request-hint', () => requestHint())
 ipcMain.handle('conversation:stop-hints', () => stopHints())
 ipcMain.handle('conversation:clear', () => clearConversation())
+// A start that failed in the page: the audio capture never reaches recognition,
+// so only the page knows why, and a phone that asked for it would hear nothing
+ipcMain.handle('conversation:listen-failed', (_event, message: unknown) => {
+  listenError = String(message || '启动监听失败')
+  markMobileDirty()
+})

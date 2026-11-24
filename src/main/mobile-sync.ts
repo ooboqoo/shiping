@@ -82,7 +82,10 @@ const COMMANDS = new Set<string>([
   'pageUp',
   'pageDown',
   'screenshotMode',
-  'conversationMode'
+  'conversationMode',
+  'hint',
+  'startListening',
+  'stopListening'
 ])
 
 type CommandHandler = (action: MobileCommand) => MobileCommandResult | Promise<MobileCommandResult>

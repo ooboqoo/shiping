@@ -14,6 +14,9 @@ function setup(t) {
   let viewers = false
   let onViewersChanged = noop
   let commandHandler = null
+  // What 对话模式's requestHint() answers: false when nothing was heard yet
+  let hintResult = true
+  const settings = { dashscopeApiKey: 'fixture' }
   let picker = async () => null
   const window = {
     position: [100, 100],
@@ -93,7 +96,7 @@ function setup(t) {
     './save-code': {},
     './ai': {},
     './stream': {},
-    './conversation': {},
+    './conversation': { requestHint: () => hintResult },
     './state': {
       state,
       inModePage: () => state.inCoderPage || state.inConversationPage,
@@ -101,7 +104,7 @@ function setup(t) {
         onPageChange = fn
       }
     },
-    './settings': { settings: { dashscopeApiKey: 'fixture' }, onSettingsChanged: noop },
+    './settings': { settings, onSettingsChanged: noop },
     './transcription': {
       onTranscriptionStart: noop,
       onTranscriptionEnd: noop,
@@ -154,6 +157,10 @@ function setup(t) {
     },
     // A phone's button press, as relay/relay.mjs hands it to the app
     command: (action) => commandHandler(action),
+    settings,
+    setHintResult: (result) => {
+      hintResult = result
+    },
     miniVisible: () => miniVisible,
     pick: (fn) => {
       picker = fn
@@ -337,4 +344,31 @@ test('a phone tab the desktop never follows is answered no', async (t) => {
   const result = f.command('conversationMode')
   t.mock.timers.tick(3000)
   assert.deepEqual(await result, { ok: false, message: '电脑没有切过去，请再试一次' })
+})
+
+test('对话模式 buttons on a phone: a hint, and listening started or stopped by name', (t) => {
+  const f = setup(t)
+  const sent = []
+  f.window.webContents.send = (channel, ...args) => sent.push([channel, ...args])
+  // 截图模式 on screen: nothing of 对话模式's runs
+  assert.deepEqual(f.command('hint'), { ok: false, message: '电脑当前不在对话模式' })
+  assert.deepEqual(f.command('startListening'), { ok: false, message: '电脑当前不在对话模式' })
+  assert.deepEqual(sent, [])
+  f.state.inCoderPage = false
+  f.state.inConversationPage = true
+  assert.deepEqual(f.command('hint'), { ok: true })
+  f.setHintResult(false)
+  assert.deepEqual(f.command('hint'), { ok: false, message: '还没有识别到对方说话' })
+  assert.deepEqual(f.command('startListening'), { ok: true })
+  assert.deepEqual(f.command('stopListening'), { ok: true })
+  assert.deepEqual(sent, [
+    ['toggle-transcription', true],
+    ['toggle-transcription', false]
+  ])
+  // Without the DashScope key nothing could hear the other side
+  f.settings.dashscopeApiKey = ''
+  assert.deepEqual(f.command('startListening'), {
+    ok: false,
+    message: '电脑上还没填写百炼平台 API Key，无法监听'
+  })
 })

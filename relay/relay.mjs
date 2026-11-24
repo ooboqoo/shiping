@@ -67,7 +67,10 @@ export const COMMANDS = new Set([
   'pageUp',
   'pageDown',
   'screenshotMode',
-  'conversationMode'
+  'conversationMode',
+  'hint',
+  'startListening',
+  'stopListening'
 ])
 
 /** How long a phone waits for the app to answer a command before it is told it did not */

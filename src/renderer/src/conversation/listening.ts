@@ -48,13 +48,15 @@ export async function startListening(): Promise<void> {
     await window.api.stopTranscription()
     if (request !== operation) return
     useTranscriptionStore.getState().setIsTranscribing(false)
-    setErrorMessage(
+    const message =
       phase === 'capture'
         ? describeCaptureError('启动录音失败', err)
         : err instanceof Error
           ? err.message
           : String(err)
-    )
+    setErrorMessage(message)
+    // Phones show why listening is off too; a capture failure is known only here
+    void window.api.reportListenFailure(message)
   } finally {
     if (request === operation) starting = false
   }
@@ -71,6 +73,18 @@ export async function stopListening(): Promise<void> {
 export function toggleListening(): void {
   if (starting || useTranscriptionStore.getState().isTranscribing) void stopListening()
   else void startListening()
+}
+
+/**
+ * `toggle-transcription` from main: the shortcut toggles (`want` absent), a
+ * phone's button names what it wants, so a second tap before the first one's
+ * start shows on the phone does not stop it again
+ */
+export function setListening(want?: boolean): void {
+  if (want === undefined) return toggleListening()
+  const on = starting || useTranscriptionStore.getState().isTranscribing
+  if (want && !on) void startListening()
+  else if (!want && on) void stopListening()
 }
 
 export function toggleHintMode(): void {

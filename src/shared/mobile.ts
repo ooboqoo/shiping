@@ -54,6 +54,8 @@ export interface MobileState {
  * front of the user at once, and the command only scrolls the desktop along.
  * `screenshotMode` / `conversationMode` are the phone's tabs: they name the mode
  * rather than toggle it, so two phones tapping the same tab do not switch twice.
+ * `startListening` / `stopListening` name what they want for the same reason:
+ * the button's label waits for the state, and a second tap must not undo the first.
  */
 export type MobileCommand =
   | 'screenshot'
@@ -63,6 +65,9 @@ export type MobileCommand =
   | 'pageDown'
   | 'screenshotMode'
   | 'conversationMode'
+  | 'hint'
+  | 'startListening'
+  | 'stopListening'
 
 export interface MobileCommandResult {
   ok: boolean

@@ -69,16 +69,18 @@
           <path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
         </svg>
         <div class="title">等待对话</div>
-        <div class="hint">在电脑上进入对话模式并开始监听，对方的话和提示会出现在这里</div>
+        <div class="hint">在电脑上开始监听，或点下面的「开始监听」，对方的话和提示会出现在这里</div>
       </div>
     </template>
 
+    <!-- One row per mode, as on the desktop's 极简悬浮条; `data-mode` buttons show with their tab -->
     <footer id="controls">
-      <button data-command="pageUp" aria-label="上翻一页">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
-        <span>上翻</span>
-      </button>
-      <button data-command="screenshot" class="primary" aria-label="截图并解答">
+      <button
+        data-command="screenshot"
+        data-mode="screenshot"
+        class="primary"
+        aria-label="截图并解答"
+      >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
             d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"
@@ -87,7 +89,7 @@
         </svg>
         <span>截图</span>
       </button>
-      <button data-command="append" aria-label="追加截图">
+      <button data-command="append" data-mode="screenshot" aria-label="追加截图">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
             d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"
@@ -96,11 +98,43 @@
         </svg>
         <span>追加</span>
       </button>
+      <button
+        data-command="hint"
+        data-mode="conversation"
+        class="primary"
+        aria-label="出提示"
+        hidden
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"
+          />
+          <path d="M9 18h6M10 22h4" />
+        </svg>
+        <span>出提示</span>
+      </button>
+      <button
+        id="listen"
+        data-command="listen"
+        data-mode="conversation"
+        aria-pressed="false"
+        hidden
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+        </svg>
+        <span id="listen-label">开始监听</span>
+      </button>
       <button data-command="stop" aria-label="停止生成">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <rect x="7" y="7" width="10" height="10" rx="2" />
         </svg>
         <span>停止</span>
+      </button>
+      <button data-command="pageUp" aria-label="上翻一页">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
+        <span>上翻</span>
       </button>
       <button data-command="pageDown" aria-label="下翻一页">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>

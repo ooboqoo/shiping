@@ -41,6 +41,8 @@
   const toastEl = $('toast')
   const tabs = [...document.querySelectorAll('[data-tab]')]
   const controlButtons = [...document.querySelectorAll('[data-command]')]
+  const listenButton = $('listen')
+  const listenLabel = $('listen-label')
 
   const escapeHtml = (text) =>
     String(text).replace(
@@ -296,6 +298,10 @@
     for (const button of tabs) button.classList.toggle('active', button.dataset.tab === next)
     $('screenshot').hidden = next !== 'screenshot'
     $('conversation').hidden = next !== 'conversation'
+    // Each mode's own buttons, as on the desktop's 极简悬浮条
+    for (const button of controlButtons) {
+      if (button.dataset.mode) button.hidden = button.dataset.mode !== next
+    }
     jumpEl.hidden = true
     renderNow()
     const saved = tabScroll[next]
@@ -423,6 +429,9 @@
     const error = !listening && conversation?.listenError
     listenErrorEl.hidden = !error
     listenErrorEl.textContent = error ? `监听出错：${error}` : ''
+    // The button says what a tap does; it waits for the state, not for its own tap
+    listenButton.setAttribute('aria-pressed', String(!!listening))
+    listenLabel.textContent = listening ? '停止监听' : '开始监听'
   }
 
   const maxScroll = () => root.scrollHeight - innerHeight
@@ -536,7 +545,11 @@
       const action = button.dataset.command
       if (action === 'pageUp') pageBoth(-1)
       else if (action === 'pageDown') pageBoth(1)
-      // 截图/追加截图/停止生成 wait for the desktop to say how it went
+      // Named, not toggled: a second tap before the state shows the first one's start must not stop it
+      else if (action === 'listen') {
+        sendCommand(state?.conversation?.listening ? 'stopListening' : 'startListening', button)
+      }
+      // The others wait for the desktop to say how it went
       else sendCommand(action, button)
     })
   }

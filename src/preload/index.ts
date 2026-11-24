@@ -392,6 +392,9 @@ const api = {
   requestHint: () => ipcRenderer.invoke('conversation:request-hint'),
   stopHints: () => ipcRenderer.invoke('conversation:stop-hints'),
   clearConversation: () => ipcRenderer.invoke('conversation:clear'),
+  // Starting to listen failed in the page (the audio capture, or recognition): for the phones
+  reportListenFailure: (message: string) =>
+    ipcRenderer.invoke('conversation:listen-failed', message),
   onConversationUtterance: (callback: (utterance: Utterance) => void) => {
     ipcRenderer.on('conversation-utterance', (_event, utterance: Utterance) => callback(utterance))
   },
@@ -461,8 +464,9 @@ const api = {
     ipcRenderer.send('transcription-audio-chunk', chunk, source),
   getTranscriptionText: () => ipcRenderer.invoke('get-transcription-text') as Promise<string>,
 
-  onToggleTranscription: (callback: () => void) => {
-    ipcRenderer.on('toggle-transcription', callback)
+  // The shortcut toggles; a phone's button says whether it wants listening on (`want`)
+  onToggleTranscription: (callback: (want?: boolean) => void) => {
+    ipcRenderer.on('toggle-transcription', (_event, want?: boolean) => callback(want))
   },
   removeToggleTranscriptionListener: () => {
     ipcRenderer.removeAllListeners('toggle-transcription')
