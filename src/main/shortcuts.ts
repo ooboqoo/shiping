@@ -370,20 +370,25 @@ function enterMiniBar(mainWindow: BrowserWindow) {
   if (isMiniBarOn) return
   setSnipSession(false)
   const hadFocus = mainWindow.isFocused()
-  isMiniBarOn = true
   // First shown where the main window was, which is where the user is looking
-  showMiniBar(softHiddenPosition ?? (mainWindow.getPosition() as [number, number]))
+  const anchor = softHiddenPosition ?? (mainWindow.getPosition() as [number, number])
+  isMiniBarOn = true
   setToolbarSuppressed(true)
   if (process.platform === 'win32') {
     softHideWindow(mainWindow)
   } else {
+    stopFrontReassert()
     stopBackgroundGuard()
     mainWindow.hide()
   }
   // The bar acts on the mode page it was folded from, and keeps 对话模式
   // listening; only from the settings or help page does it need one
   if (!inModePage()) mainWindow.webContents.send('mini-bar-entered')
+  // On macOS, `returnFocus` calls `app.hide()`, which asynchronously hides every
+  // window of the app: hide first, then let `showMiniBar` present the bar once
+  // macOS finishes hiding so the bar is not swept away along with the main window
   returnFocus(mainWindow, hadFocus)
+  showMiniBar(anchor, { afterAppHide: process.platform === 'darwin' && hadFocus })
   syncShortcuts()
 }
 
@@ -902,6 +907,7 @@ export function hideMainWindow(): void {
   if (process.platform === 'win32') {
     softHideWindow(mainWindow)
   } else {
+    stopFrontReassert()
     stopBackgroundGuard()
     mainWindow.hide()
   }

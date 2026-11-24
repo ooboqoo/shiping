@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { BrowserWindow, ipcMain, screen, type WebContents } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, type WebContents } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { applyContentProtection, registerStealthWindow } from './window-privacy'
 import type { AppMode } from '../shared/api-profile'
@@ -20,6 +20,9 @@ const MINI_BAR_HEIGHT = 44
 /** Above the main window (100) and the toolbar (101), below the region pickers */
 const MINI_BAR_RELATIVE_LEVEL = 101
 const TOP_MOST_GUARD_INTERVAL = 2000
+/** On macOS, `app.hide()` completes asynchronously on AppKit's runloop (~10–25ms) */
+const APP_HIDE_POLL_INTERVAL = 10
+const APP_HIDE_MAX_WAIT = 200
 /** Mirrors the renderer's default opacity setting, until the renderer syncs the real one */
 const DEFAULT_OPACITY = 0.8
 
@@ -32,6 +35,9 @@ let isMiniBarReady = false
  * including the moment before a newly created window has painted
  */
 let isMiniBarShown = false
+/** Deferring `presentMiniBar` until macOS finishes `app.hide()` so it does not sweep the bar away */
+let waitingForAppHide = false
+let appHideTimer: ReturnType<typeof setTimeout> | null = null
 /** The main window; the bar is created only while it is open */
 let ownerWindow: BrowserWindow | null = null
 let miniBarOpacity = DEFAULT_OPACITY
@@ -39,6 +45,12 @@ let miniBarOpacity = DEFAULT_OPACITY
 let miniBarPosition: [number, number] | null = null
 let topMostGuard: ReturnType<typeof setInterval> | null = null
 const miniBarState: MiniBarState = { mode: 'screenshot', listening: false, listenFailed: false }
+
+function cancelAppHideWait(): void {
+  waitingForAppHide = false
+  if (appHideTimer) clearTimeout(appHideTimer)
+  appHideTimer = null
+}
 
 // The bar's renderer loads once and asks; every change after that is pushed
 ipcMain.handle('mini-bar:get-state', () => miniBarState)
@@ -108,12 +120,14 @@ function ensureMiniBarWindow(): BrowserWindow | null {
   })
   registerStealthWindow(window, '识屏 · 极简悬浮条')
   // Shown before its page painted: it appears now, unless hidden again meanwhile
+  // or still waiting for macOS's `app.hide()` to finish
   window.once('ready-to-show', () => {
     isMiniBarReady = true
-    if (isMiniBarShown) presentMiniBar(window)
+    if (isMiniBarShown && !waitingForAppHide) presentMiniBar(window)
   })
   window.on('closed', () => {
     if (miniBarWindow !== window) return
+    cancelAppHideWait()
     stopTopMostGuard()
     miniBarWindow = null
     isMiniBarReady = false
@@ -141,10 +155,17 @@ export function getMiniBarSize(window: BrowserWindow): { width: number; height: 
 /**
  * Show the bar where the user left it, or at `anchor` (the main window's
  * top-left corner) the first time, kept inside a connected display either way.
+ * When `afterAppHide` is set (macOS after `returnFocus` calls `app.hide()`),
+ * wait for macOS to finish hiding the app before ordering the bar on screen,
+ * otherwise `app.hide()` immediately hides the bar along with the main window.
  */
-export function showMiniBar(anchor?: [number, number]): void {
+export function showMiniBar(
+  anchor?: [number, number],
+  { afterAppHide = false }: { afterAppHide?: boolean } = {}
+): void {
   const window = ensureMiniBarWindow()
   if (!window) return
+  cancelAppHideWait()
   const [x, y] = miniBarPosition ?? anchor ?? window.getPosition()
   const workArea = screen.getDisplayMatching({
     x,
@@ -159,6 +180,25 @@ export function showMiniBar(anchor?: [number, number]): void {
     height: MINI_BAR_HEIGHT
   })
   isMiniBarShown = true
+  if (afterAppHide) {
+    waitingForAppHide = true
+    const deadline = Date.now() + APP_HIDE_MAX_WAIT
+    const wait = () => {
+      appHideTimer = null
+      if (!isMiniBarShown || miniBarWindow !== window || window.isDestroyed()) {
+        waitingForAppHide = false
+        return
+      }
+      if (typeof app?.isHidden === 'function' && !app.isHidden() && Date.now() < deadline) {
+        appHideTimer = setTimeout(wait, APP_HIDE_POLL_INTERVAL)
+        return
+      }
+      waitingForAppHide = false
+      if (isMiniBarReady) presentMiniBar(window)
+    }
+    appHideTimer = setTimeout(wait, APP_HIDE_POLL_INTERVAL)
+    return
+  }
   if (isMiniBarReady) presentMiniBar(window)
 }
 
@@ -179,6 +219,7 @@ export function moveMiniBar(dx: number, dy: number): void {
 }
 
 export function hideMiniBar(): void {
+  cancelAppHideWait()
   stopTopMostGuard()
   if (!isMiniBarShown) return
   isMiniBarShown = false
@@ -208,6 +249,9 @@ function startTopMostGuard(): void {
     if (!isMiniBarVisible()) {
       stopTopMostGuard()
       return
+    }
+    if (isMiniBarReady && !miniBarWindow!.isVisible()) {
+      miniBarWindow!.showInactive()
     }
     miniBarWindow!.setAlwaysOnTop(true, 'screen-saver', MINI_BAR_RELATIVE_LEVEL)
   }, TOP_MOST_GUARD_INTERVAL)

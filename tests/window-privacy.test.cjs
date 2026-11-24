@@ -197,6 +197,79 @@ test('a mini bar hidden before its page painted stays hidden', (t) => {
   assert.equal(bar.isMiniBarVisible(), false)
 })
 
+test('showMiniBar with afterAppHide waits for app.isHidden() and cancels if hidden meanwhile', (t) => {
+  const noop = () => {}
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  t.mock.method(global, 'setInterval', () => 1)
+  t.mock.method(global, 'clearInterval', noop)
+  const created = []
+  let appHidden = false
+  class MiniWindow extends Window {
+    constructor() {
+      super()
+      created.push(this)
+    }
+    setMenuBarVisibility = noop
+    setOpacity = noop
+    setAlwaysOnTop = noop
+    setVisibleOnAllWorkspaces = noop
+    loadFile = noop
+    setBounds = noop
+    getPosition = () => [0, 0]
+    showInactive() {
+      this.visible = true
+    }
+    isVisible() {
+      return !!this.visible
+    }
+    hide() {
+      this.visible = false
+    }
+    moveTop = noop
+  }
+  const mocks = {
+    electron: {
+      app: { isHidden: () => appHidden },
+      BrowserWindow: MiniWindow,
+      ipcMain: { handle: noop },
+      screen: {
+        getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })
+      }
+    },
+    '@electron-toolkit/utils': { is: { dev: false } }
+  }
+  const cache = new Map()
+  load('src/main/window-privacy.ts', mocks, cache)
+  const bar = load('src/main/mini-bar-window.ts', mocks, cache)
+  bar.attachMiniBar(new Window())
+
+  // First creation: ready-to-show while still waiting for app.hide() must not present yet
+  bar.showMiniBar([100, 100], { afterAppHide: true })
+  const mini = created.at(-1)
+  mini.emit('ready-to-show')
+  assert.equal(mini.isVisible(), false)
+  assert.equal(bar.isMiniBarVisible(), true)
+
+  // Still not hidden after 10ms
+  t.mock.timers.tick(10)
+  assert.equal(mini.isVisible(), false)
+
+  // Once macOS finishes app.hide(), the next poll presents the bar
+  appHidden = true
+  t.mock.timers.tick(10)
+  assert.equal(mini.isVisible(), true)
+
+  // Re-entering with bar already ready: hiding before app.hide() settles keeps it hidden
+  bar.hideMiniBar()
+  appHidden = false
+  bar.showMiniBar([100, 100], { afterAppHide: true })
+  assert.equal(mini.isVisible(), false)
+  bar.hideMiniBar()
+  appHidden = true
+  t.mock.timers.tick(20)
+  assert.equal(mini.isVisible(), false)
+})
+
 test('existing installations default to stealth on and a saved opt-out survives restart', () => {
   const saved = new Map([
     ['interview-coder-settings', JSON.stringify({ version: 8, state: { hideDockIcon: true } })]

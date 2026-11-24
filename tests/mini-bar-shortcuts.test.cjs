@@ -8,6 +8,7 @@ function setup(t) {
   const noop = () => {}
   const state = { inCoderPage: true, inConversationPage: false, inSettingsPage: false }
   let miniVisible = false
+  const miniBarCalls = []
   const miniBarSender = {}
   let miniBarMode = 'screenshot'
   let onPageChange = noop
@@ -56,7 +57,11 @@ function setup(t) {
   t.mock.method(global, 'clearInterval', noop)
   const api = load('src/main/shortcuts.ts', {
     electron: {
-      app: { hide: noop },
+      app: {
+        hide: () => {
+          miniBarCalls.push('app.hide')
+        }
+      },
       ipcMain: { handle: (name, callback) => handlers.set(name, callback) },
       globalShortcut: {
         register: (key) => {
@@ -79,8 +84,9 @@ function setup(t) {
       setToolbarWidth: noop
     },
     './mini-bar-window': {
-      showMiniBar: () => {
+      showMiniBar: (anchor, options) => {
         miniVisible = true
+        miniBarCalls.push(['showMiniBar', anchor, options])
       },
       hideMiniBar: () => {
         miniVisible = false
@@ -162,6 +168,7 @@ function setup(t) {
       hintResult = result
     },
     miniVisible: () => miniVisible,
+    miniBarCalls,
     pick: (fn) => {
       picker = fn
       return handlers.get('pickCaptureRegion')()
@@ -371,4 +378,19 @@ test('对话模式 buttons on a phone: a hint, and listening started or stopped 
     ok: false,
     message: '电脑上还没填写百炼平台 API Key，无法监听'
   })
+})
+
+test('entering the mini bar hides the main window and returns focus before showing the bar', (t) => {
+  const f = setup(t)
+  f.window.isFocused = () => true
+  f.trigger('toggleMiniBar')
+  assert.equal(f.miniVisible(), true)
+  const showCall = f.miniBarCalls.find((c) => Array.isArray(c) && c[0] === 'showMiniBar')
+  assert.ok(showCall)
+  if (process.platform === 'darwin') {
+    const appHideIdx = f.miniBarCalls.indexOf('app.hide')
+    const showIdx = f.miniBarCalls.indexOf(showCall)
+    assert.ok(appHideIdx !== -1 && appHideIdx < showIdx)
+    assert.deepEqual(showCall[2], { afterAppHide: true })
+  }
 })
