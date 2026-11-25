@@ -22,6 +22,10 @@ import {
   type ReasoningEffort
 } from '../../../../shared/api-profile'
 import type { ConversationAudioMode, HintMode } from '../../../../shared/conversation'
+import {
+  normalizeTranscriptionProvider,
+  type TranscriptionProvider
+} from '../../../../shared/transcription'
 import { DEFAULT_PROXY, normalizeProxySettings, type ProxySettings } from '../../../../shared/proxy'
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE,
@@ -328,6 +332,8 @@ interface Settings {
   clipboardContent: ClipboardContent
 
   dashscopeApiKey: string
+  transcriptionProvider: TranscriptionProvider
+  openaiTranscriptionApiKey: string
 
   /** 手机同步 over the LAN: the app serves the phone page itself */
   mobileLanEnabled: boolean
@@ -481,6 +487,8 @@ const defaultSettings: Settings = {
   clipboardContent: 'code',
 
   dashscopeApiKey: '',
+  transcriptionProvider: 'dashscope',
+  openaiTranscriptionApiKey: '',
 
   mobileLanEnabled: false,
   mobileLanKey: '',
@@ -873,6 +881,7 @@ export const useSettingsStore = create<SettingsStore>()(
       },
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted as Partial<Settings>) }
+        state.transcriptionProvider = normalizeTranscriptionProvider(state.transcriptionProvider)
         try {
           state.networkProxy = normalizeProxySettings(state.networkProxy)
         } catch {

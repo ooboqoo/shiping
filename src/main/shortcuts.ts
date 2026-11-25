@@ -19,6 +19,7 @@ import {
   type ToolbarActionName
 } from '../shared/toolbar'
 import type { AppMode } from '../shared/api-profile'
+import { voiceApiKey, voiceKeyLabel } from '../shared/transcription'
 import {
   showMiniBar,
   hideMiniBar,
@@ -1250,8 +1251,8 @@ function runMobileCommand(
         return { ok: false, message: '电脑当前不在对话模式' }
       }
       const want = action === 'startListening'
-      if (want && !settings.dashscopeApiKey) {
-        return { ok: false, message: '电脑上还没填写百炼平台 API Key，无法监听' }
+      if (want && !voiceApiKey(settings)) {
+        return { ok: false, message: `电脑上还没填写${voiceKeyLabel(settings)}，无法监听` }
       }
       // Answered at once: starting takes seconds, and the phone's button follows
       // `listening` in the state; a failure reaches it as `listenError`
@@ -1336,7 +1337,7 @@ let recordingShortcut = false
 function isShortcutLive(action: string): boolean {
   const scope = SHORTCUT_SCOPES[action] ?? { page: 'any' }
   if (recordingShortcut && state.inSettingsPage) return false
-  if (scope.voice && !settings.dashscopeApiKey) return false
+  if (scope.voice && !voiceApiKey(settings)) return false
   if (!onShortcutPage(scope.page)) return false
   if (isMiniBarOn && action === 'switchMode') return false
   if (scope.hidden || isMainWindowShown() || isMiniBarVisible()) return true
@@ -1462,8 +1463,12 @@ ipcMain.handle('setShortcutRecording', (_event, recording: boolean) => {
 })
 
 onSettingsChanged((previous) => {
-  // The voice actions need the DashScope key
-  if (previous.dashscopeApiKey !== settings.dashscopeApiKey) syncShortcuts()
+  // The voice actions need the selected provider's key.
+  if (
+    voiceApiKey(previous) !== voiceApiKey(settings) ||
+    previous.transcriptionProvider !== settings.transcriptionProvider
+  )
+    syncShortcuts()
   // Runs before settings.ts creates the toolbar window, which then opens at its size
   syncToolbarWidth()
 })

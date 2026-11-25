@@ -5,6 +5,7 @@ import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { isModifierKey, getShortcutAccelerator } from '@/lib/utils/keyboard'
 import { useShortcutsStore, type Shortcut as StoredShortcut } from '@/lib/store/shortcuts'
 import { useSettingsStore } from '@/lib/store/settings'
+import { voiceApiKey } from '../../../shared/transcription'
 
 const ShortcutsContext = createContext<{
   recordingAction: string | null
@@ -42,7 +43,7 @@ function useFailedShortcuts(shortcuts: Record<string, StoredShortcut>): Set<stri
 
 export function CustomShortcuts() {
   const { shortcuts, updateShortcut } = useShortcutsStore()
-  const { dashscopeApiKey } = useSettingsStore()
+  const key = voiceApiKey(useSettingsStore())
   const [recordingAction, setRecordingAction] = useState<string | null>(null)
   const failed = useFailedShortcuts(shortcuts)
 
@@ -202,13 +203,13 @@ export function CustomShortcuts() {
             label="语音转录"
             description="截图模式：开始/暂停转录；对话模式：开始/停止监听对方说话"
             shortcut="toggleTranscription"
-            disabled={!dashscopeApiKey}
+            disabled={!key}
           />
           <Shortcut
             label="清除转录"
             description="截图模式：清除未提交的转录文本；对话模式：清空整段对话和提示"
             shortcut="clearTranscription"
-            disabled={!dashscopeApiKey}
+            disabled={!key}
           />
         </div>
 

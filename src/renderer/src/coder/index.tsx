@@ -12,9 +12,17 @@ import { AppStatusBar } from './AppStatusBar'
 import { PrerequisitesChecker } from './PrerequisitesChecker'
 import { SnipQuestionDialog } from './SnipQuestionDialog'
 import { TranscriptionBar } from './TranscriptionBar'
+import {
+  voiceApiKey,
+  voiceKeyLabel,
+  normalizeTranscriptionProvider
+} from '../../../shared/transcription'
 
 export default function CoderPage() {
-  const { dashscopeApiKey } = useSettingsStore()
+  const settings = useSettingsStore()
+  const key = voiceApiKey(settings)
+  const provider = normalizeTranscriptionProvider(settings.transcriptionProvider)
+  const keyLabel = voiceKeyLabel(settings)
   const { isTranscribing, setIsTranscribing, setTranscriptionText, clearText } =
     useTranscriptionStore()
   const { setErrorMessage } = useSolutionStore()
@@ -42,8 +50,8 @@ export default function CoderPage() {
         await window.api.stopTranscription()
         if (request === operation.current) setIsTranscribing(false)
       } else {
-        if (!dashscopeApiKey) {
-          setErrorMessage('请先在设置中配置百炼平台 API Key', VOICE_ERROR_TITLE)
+        if (!key) {
+          setErrorMessage(`请先在设置中配置${keyLabel}`, VOICE_ERROR_TITLE)
           return
         }
         starting.current = true
@@ -57,7 +65,7 @@ export default function CoderPage() {
           await startAudioCapture()
           if (request !== operation.current) return
           phase = 'asr'
-          await window.api.startTranscription(dashscopeApiKey)
+          await window.api.startTranscription(key, { provider })
           if (request !== operation.current) return
           setIsTranscribing(true)
           setErrorMessage(null)
@@ -83,7 +91,7 @@ export default function CoderPage() {
     return () => {
       window.api.removeToggleTranscriptionListener()
     }
-  }, [isTranscribing, dashscopeApiKey, setIsTranscribing, setErrorMessage])
+  }, [isTranscribing, key, keyLabel, provider, setIsTranscribing, setErrorMessage])
 
   useEffect(() => {
     window.api.onTranscriptionText((data) => {
