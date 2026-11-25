@@ -11,6 +11,7 @@ import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
 import { NO_REPLY, type HintCard } from '../../../shared/conversation'
+import { voiceApiKey, voiceKeyLabel } from '../../../shared/transcription'
 import { startListening } from './listening'
 
 /** What one page of scrolling keeps of the previous page, so the eye finds its place */
@@ -222,7 +223,8 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
 function EmptyState() {
   const navigate = useNavigate()
   const { shortcuts } = useShortcutsStore()
-  const dashscopeApiKey = useSettingsStore((state) => state.dashscopeApiKey)
+  const keyValue = useSettingsStore(voiceApiKey)
+  const keyLabel = useSettingsStore(voiceKeyLabel)
   const hintMode = useSettingsStore((state) => state.conversationHintMode)
   const isTranscribing = useTranscriptionStore((state) => state.isTranscribing)
   const hasUtterances = useConversationStore((state) => state.utterances.length > 0)
@@ -234,10 +236,10 @@ function EmptyState() {
   )
 
   let content: ReactNode
-  if (!dashscopeApiKey) {
+  if (!keyValue) {
     content = (
       <>
-        <p>对话模式靠语音识别听对方说话，需要先填写百炼平台 API Key</p>
+        <p>对话模式靠语音识别听对方说话，需要先填写{keyLabel}</p>
         <Button size="sm" variant="secondary" onClick={() => navigate('/settings?tab=voice')}>
           去设置
         </Button>

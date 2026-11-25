@@ -9,6 +9,7 @@ import {
   type ReasoningEffort
 } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
+import { normalizeTranscriptionProvider, type TranscriptionProvider } from '../shared/transcription'
 import { setToolbarEnabled, setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 import { createToolbarButtons } from '../shared/toolbar'
 import { DEFAULT_PROXY, normalizeProxySettings } from '../shared/proxy'
@@ -36,6 +37,12 @@ export function onSettingsChanged(listener: SettingsListener): void {
 }
 
 ipcMain.handle('updateAppSettings', (_event, _settings) => {
+  if ('transcriptionProvider' in _settings) {
+    _settings = {
+      ..._settings,
+      transcriptionProvider: normalizeTranscriptionProvider(_settings.transcriptionProvider)
+    }
+  }
   if ('networkProxy' in _settings) {
     _settings = { ..._settings, networkProxy: normalizeProxySettings(_settings.networkProxy) }
   }
@@ -206,6 +213,8 @@ export const settings = {
   /** `code`: the answer's first code block; `answer`: the whole answer, Markdown included */
   clipboardContent: 'code' as ClipboardContent,
   dashscopeApiKey: '',
+  transcriptionProvider: 'dashscope' as TranscriptionProvider,
+  openaiTranscriptionApiKey: '',
   /** 手机同步 over the LAN: the app serves the phone page itself, see mobile-sync.ts */
   mobileLanEnabled: false,
   /** The LAN page's secret, made by the renderer on first use; a new one voids every QR code */

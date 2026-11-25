@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FileText, Lightbulb, MessagesSquare, TriangleAlert, Mic } from 'lucide-react'
 import type { ConversationAudioMode } from '../../../../shared/conversation'
+import { voiceApiKey, voiceKeyLabel } from '../../../../shared/transcription'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -34,8 +35,8 @@ export function ConversationSection({
   onOpenVoice: () => void
   onOpenKnowledge: () => void
 }) {
+  const settings = useSettingsStore()
   const {
-    dashscopeApiKey,
     conversationHintMode,
     conversationAudioMode,
     conversationMicrophoneDeviceId,
@@ -45,7 +46,7 @@ export function ConversationSection({
     conversationAutoSave,
     conversationSaveDir,
     updateSetting
-  } = useSettingsStore()
+  } = settings
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([])
   useEffect(() => {
     if (conversationAudioMode === 'system') return
@@ -58,10 +59,10 @@ export function ConversationSection({
 
   return (
     <>
-      {!dashscopeApiKey && (
+      {!voiceApiKey(settings) && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-600/40 bg-amber-100/80 px-4 py-2 text-sm text-amber-900">
           <TriangleAlert className="h-4 w-4 shrink-0" />
-          对话模式靠语音识别听对方说话，需要先填写百炼平台 API Key
+          对话模式靠语音识别听对方说话，需要先填写{voiceKeyLabel(settings)}
           <button
             className="ml-auto text-blue-700 hover:underline cursor-pointer"
             onClick={onOpenVoice}

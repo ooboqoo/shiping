@@ -2,6 +2,8 @@ import { ipcMain } from 'electron'
 import WebSocket from 'ws'
 import { randomUUID } from 'node:crypto'
 import type { AudioSource } from '../shared/conversation'
+import { normalizeTranscriptionProvider, type TranscriptionProvider } from '../shared/transcription'
+import { createOpenAIRecognition, type OpenAIRecognition } from './openai-transcription'
 
 const WS_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference/'
 export type TranscriptionPurpose = 'screenshot' | 'conversation'
@@ -11,9 +13,11 @@ export interface TranscriptionOptions {
   /** Silence (ms) that ends a sentence; the recogniser's default (1300ms) when absent */
   maxSentenceSilence?: number
   sources?: AudioSource[]
+  provider?: TranscriptionProvider
 }
 interface Session {
-  socket: WebSocket
+  socket?: WebSocket
+  openai?: OpenAIRecognition
   taskId: string
   source: AudioSource
   started: boolean
@@ -60,15 +64,15 @@ function cleanup() {
   for (const session of sessions.values()) {
     session.rejectStart(new Error('语音识别已停止'))
     session.resolveStop?.()
-    session.socket.removeAllListeners()
+    session.openai?.dispose()
+    const socket = session.socket
+    if (!socket) continue
+    socket.removeAllListeners()
     // ws emits an asynchronous error when close() cancels a pending handshake.
     // This session is detached: consume shutdown errors without affecting a new start.
-    session.socket.on('error', () => undefined)
-    if (
-      session.socket.readyState === WebSocket.OPEN ||
-      session.socket.readyState === WebSocket.CONNECTING
-    )
-      session.socket.close()
+    socket.on('error', () => undefined)
+    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+      socket.close()
   }
   sessions.clear()
 }
@@ -137,9 +141,35 @@ function fail(session: Session, error: AsrFailure | string) {
   cleanup()
   reportStopped()
 }
+function sendAudio(session: Session, chunk: Buffer) {
+  if (session.openai) session.openai.append(chunk)
+  else if (session.socket?.readyState === WebSocket.OPEN) session.socket.send(chunk)
+}
+function ready(session: Session) {
+  if (sessions.get(session.source) !== session || session.started) return
+  session.started = true
+  session.buffered.forEach((chunk) => sendAudio(session, chunk))
+  session.buffered = []
+  session.resolveStart()
+}
+function sentence(session: Session, text: string, final: boolean) {
+  if (sessions.get(session.source) !== session) return
+  if (purpose === 'conversation')
+    sentenceListeners.forEach((listener) => listener(text, final, session.source))
+  else {
+    // OpenAI returns separate sentences without intervening whitespace.
+    const prefix = session.openai && accumulatedText && text ? '\n' : ''
+    if (final) {
+      accumulatedText += prefix + text
+      currentPartial = ''
+    } else currentPartial = prefix + text
+    send('transcription-text', { text: getTranscriptionText(), isPartial: !final })
+  }
+}
 async function startTranscription(apiKey: string, options: TranscriptionOptions = {}) {
   stopping = false
   purpose = options.purpose ?? 'screenshot'
+  const provider = normalizeTranscriptionProvider(options.provider)
   const sources: AudioSource[] =
     purpose === 'conversation'
       ? [...new Set<AudioSource>(options.sources ?? ['system'])]
@@ -152,13 +182,17 @@ async function startTranscription(apiKey: string, options: TranscriptionOptions 
       sources.map(
         (source) =>
           new Promise<void>((resolve, reject) => {
-            const socket = new WebSocket(WS_URL, { headers: { Authorization: `bearer ${apiKey}` } })
             const timeout = setTimeout(
-              () => fail(session, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })),
+              () =>
+                fail(
+                  session,
+                  provider === 'dashscope'
+                    ? Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })
+                    : '连接 OpenAI 超时，请检查网络'
+                ),
               8000
             )
             const session: Session = {
-              socket,
               taskId: randomUUID(),
               source,
               started: false,
@@ -174,6 +208,23 @@ async function startTranscription(apiKey: string, options: TranscriptionOptions 
             }
             owned.add(session)
             sessions.set(source, session)
+            if (provider !== 'dashscope') {
+              session.openai = createOpenAIRecognition(
+                provider,
+                apiKey,
+                options.maxSentenceSilence,
+                {
+                  ready: () => ready(session),
+                  sentence: (text, final) => sentence(session, text, final),
+                  error: (message) => fail(session, message),
+                  finished: () => session.resolveStop?.()
+                }
+              )
+              session.openai.start()
+              return
+            }
+            const socket = new WebSocket(WS_URL, { headers: { Authorization: `bearer ${apiKey}` } })
+            session.socket = socket
             socket.on('open', () => {
               socket.send(
                 JSON.stringify({
@@ -207,24 +258,10 @@ async function startTranscription(apiKey: string, options: TranscriptionOptions 
                 const message = JSON.parse(data.toString())
                 const event = message.header?.event
                 if (event === 'task-started') {
-                  session.started = true
-                  session.buffered.forEach((chunk) => socket.send(chunk))
-                  session.buffered = []
-                  session.resolveStart()
+                  ready(session)
                 } else if (event === 'result-generated') {
-                  const sentence = message.payload?.output?.sentence
-                  if (!sentence) return
-                  const text: string = sentence.text || ''
-                  const final = sentence.sentence_end === true
-                  if (purpose === 'conversation')
-                    sentenceListeners.forEach((listener) => listener(text, final, source))
-                  else {
-                    if (final) {
-                      accumulatedText += text
-                      currentPartial = ''
-                    } else currentPartial = text
-                    send('transcription-text', { text: getTranscriptionText(), isPartial: !final })
-                  }
+                  const result = message.payload?.output?.sentence
+                  if (result) sentence(session, result.text || '', result.sentence_end === true)
                 } else if (event === 'task-failed')
                   fail(
                     session,
@@ -266,12 +303,18 @@ function stopTranscription(): Promise<void> {
       [...sessions.values()].map(
         (session) =>
           new Promise<void>((resolve) => {
-            const timeout = setTimeout(resolve, 700)
+            const timeout = setTimeout(resolve, session.openai ? 5000 : 700)
             session.resolveStop = () => {
               clearTimeout(timeout)
               resolve()
             }
-            if (session.started && session.socket.readyState === WebSocket.OPEN)
+            if (session.started && session.openai) {
+              try {
+                session.openai.finish()
+              } catch {
+                session.resolveStop()
+              }
+            } else if (session.started && session.socket?.readyState === WebSocket.OPEN)
               session.socket.send(
                 JSON.stringify({
                   header: { action: 'finish-task', task_id: session.taskId, streaming: 'duplex' },
@@ -307,8 +350,13 @@ function handleAudioChunk(chunk: ArrayBuffer, source: AudioSource = 'system') {
   const session = sessions.get(source)
   if (!session) return
   const buffer = Buffer.from(chunk)
-  if (session.started && session.socket.readyState === WebSocket.OPEN) session.socket.send(buffer)
-  else {
+  if (session.started && (session.openai || session.socket?.readyState === WebSocket.OPEN)) {
+    try {
+      sendAudio(session, buffer)
+    } catch {
+      fail(session, '语音识别音频发送失败，请重新开始监听')
+    }
+  } else {
     session.buffered.push(buffer)
     if (session.buffered.length > 16) session.buffered.shift()
   }

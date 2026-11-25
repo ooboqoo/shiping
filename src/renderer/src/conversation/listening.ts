@@ -3,6 +3,11 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
 import { describeCaptureError, startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
+import {
+  voiceApiKey,
+  voiceKeyLabel,
+  normalizeTranscriptionProvider
+} from '../../../shared/transcription'
 
 /**
  * Listening to the other side: the audio is captured here and recognised in
@@ -17,12 +22,13 @@ export async function startListening(): Promise<void> {
   if (starting) return
   const request = ++operation
   starting = true
-  const { dashscopeApiKey, conversationSilenceMs, conversationAudioMode } =
-    useSettingsStore.getState()
+  const settings = useSettingsStore.getState()
+  const { conversationSilenceMs, conversationAudioMode } = settings
+  const key = voiceApiKey(settings)
   const { setErrorMessage } = useConversationStore.getState()
-  if (!dashscopeApiKey) {
+  if (!key) {
     starting = false
-    setErrorMessage('请先在「设置 → 语音」填写百炼平台 API Key，才能识别对方说话')
+    setErrorMessage(`请先在「设置 → 语音」填写${voiceKeyLabel(settings)}，才能识别对方说话`)
     return
   }
   let phase: 'capture' | 'asr' = 'asr'
@@ -33,8 +39,9 @@ export async function startListening(): Promise<void> {
     const sources = await startAudioCapture({ mode: conversationAudioMode || 'system' })
     if (request !== operation) return
     phase = 'asr'
-    await window.api.startTranscription(dashscopeApiKey, {
+    await window.api.startTranscription(key, {
       purpose: 'conversation',
+      provider: normalizeTranscriptionProvider(settings.transcriptionProvider),
       sources,
       maxSentenceSilence: conversationSilenceMs
     })
