@@ -404,6 +404,9 @@ const api = {
   onConversationHint: (callback: (card: HintCard) => void) => {
     ipcRenderer.on('conversation-hint', (_event, card: HintCard) => callback(card))
   },
+  onConversationHintRemoved: (callback: (id: number) => void) => {
+    ipcRenderer.on('conversation-hint-removed', (_event, id: number) => callback(id))
+  },
   onConversationHintChunk: (callback: (id: number, chunk: string) => void) => {
     ipcRenderer.on('conversation-hint-chunk', (_event, id: number, chunk: string) =>
       callback(id, chunk)
@@ -424,6 +427,7 @@ const api = {
       'conversation-utterance',
       'conversation-utterance-removed',
       'conversation-hint',
+      'conversation-hint-removed',
       'conversation-hint-chunk',
       'conversation-cleared',
       'conversation-notice',

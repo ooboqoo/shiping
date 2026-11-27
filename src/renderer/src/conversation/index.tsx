@@ -69,6 +69,10 @@ function useConversationEvents() {
       pendingChunks.current.delete(card.id)
       store.upsertHint(card)
     })
+    window.api.onConversationHintRemoved((id) => {
+      pendingChunks.current.delete(id)
+      store.removeHint(id)
+    })
     window.api.onConversationHintChunk((id, chunk) => {
       pendingChunks.current.set(id, (pendingChunks.current.get(id) ?? '') + chunk)
       if (frameHandle.current === null) {

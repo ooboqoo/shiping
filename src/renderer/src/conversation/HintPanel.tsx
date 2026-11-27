@@ -10,7 +10,7 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
-import { NO_REPLY, type HintCard } from '../../../shared/conversation'
+import { isNoReply, type HintCard } from '../../../shared/conversation'
 import { startListening } from './listening'
 
 /** What one page of scrolling keeps of the previous page, so the eye finds its place */
@@ -172,7 +172,7 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
       .map((u) => u.text)
       .join(' ')
   )
-  const noReply = card.status === 'done' && card.text.trim() === NO_REPLY
+  const noReply = card.status === 'done' && isNoReply(card.text)
 
   return (
     <article

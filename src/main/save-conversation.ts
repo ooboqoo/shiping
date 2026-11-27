@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { conversationSaveDir } from './settings'
-import { NO_REPLY, type HintCard, type Utterance } from '../shared/conversation'
+import { isNoReply, type HintCard, type Utterance } from '../shared/conversation'
 
 /**
  * 对话模式's record on disk: one Markdown file per conversation, named after
@@ -54,7 +54,7 @@ export function formatConversation({
   const shown = hints
     .filter((card) => {
       const text = card.text.trim()
-      return card.status !== 'waiting' && card.status !== 'error' && text && text !== NO_REPLY
+      return card.status !== 'waiting' && card.status !== 'error' && text && !isNoReply(text)
     })
     .sort((a, b) => a.toId - b.toId)
   if (spoken.length === 0 && shown.length === 0) return null

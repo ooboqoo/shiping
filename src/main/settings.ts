@@ -166,6 +166,12 @@ export const settings = {
   conversationSilenceMs: 800,
   /** 对话模式: a finished sentence shorter than this triggers no automatic hint */
   conversationMinChars: 4,
+  /**
+   * 对话模式: standalone filler sentences to ignore (one per line or separated by
+   * commas). Must stay falsy here: App.tsx fills blank renderer fields from
+   * main, so a truthy default would overwrite a user who intentionally cleared it.
+   */
+  conversationIgnoreWords: '',
   /** 对话模式: keep each conversation as a Markdown file, see save-conversation.ts */
   conversationAutoSave: false,
   /** Where the conversations go; blank means Documents/Shiping */

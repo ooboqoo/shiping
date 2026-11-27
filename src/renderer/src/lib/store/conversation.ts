@@ -19,6 +19,7 @@ interface ConversationStore extends ConversationState {
   removeUtterance: (id: number) => void
   /** Main's copy of a card is complete: it replaces whatever chunks came before */
   upsertHint: (card: HintCard) => void
+  removeHint: (id: number) => void
   appendHintText: (chunks: Map<number, string>) => void
   clear: () => void
   setErrorMessage: (message: string | null) => void
@@ -49,6 +50,11 @@ export const useConversationStore = create<ConversationStore>()((set) => ({
       hints[index] = card
       return { hints }
     }),
+  removeHint: (id) =>
+    set((state) => ({
+      hints: state.hints.filter((h) => h.id !== id),
+      focusedHintId: state.focusedHintId === id ? null : state.focusedHintId
+    })),
   appendHintText: (chunks) =>
     set((state) => ({
       hints: state.hints.map((h) =>

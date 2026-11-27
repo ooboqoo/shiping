@@ -14,8 +14,11 @@ import {
 import { markMobileDirty, registerMobileSource } from './mobile-sync'
 import {
   countMeaningfulChars,
+  isIgnoredSentence,
+  isNoReply,
   looksLikeQuestion,
-  NO_REPLY,
+  maybeNoReply,
+  parseIgnoreWords,
   type ConversationSnapshot,
   type AudioSource,
   type HintCard,
@@ -164,6 +167,60 @@ let earlyTimer: NodeJS.Timeout | null = null
 /** The open sentence the timer waits on, as it read when the timer was set */
 let earlyCandidate: { id: number; text: string } | null = null
 
+/**
+ * Automatic cards held back from the UI / phone / disk until their streamed
+ * text rules out NO_REPLY. Once revealed they leave this set and behave like
+ * any other card; if they finish as NO_REPLY they are dropped silently.
+ */
+const hiddenCards = new Set<number>()
+
+let cachedIgnoreRaw = ''
+let cachedIgnoreSet = new Set<string>()
+
+function ignoreWords(): Set<string> {
+  const raw = settings.conversationIgnoreWords || ''
+  if (raw !== cachedIgnoreRaw) {
+    cachedIgnoreRaw = raw
+    cachedIgnoreSet = parseIgnoreWords(raw)
+  }
+  return cachedIgnoreSet
+}
+
+function isIgnored(text: string, source?: AudioSource): boolean {
+  return source !== 'microphone' && isIgnoredSentence(text, ignoreWords())
+}
+
+function visibleHints(): HintCard[] {
+  return hints.filter((card) => !hiddenCards.has(card.id))
+}
+
+function revealCard(card: HintCard) {
+  if (!hiddenCards.delete(card.id)) return
+  publishHint(card)
+}
+
+function dropCard(card: HintCard) {
+  const wasHidden = hiddenCards.delete(card.id)
+  earlyStarts.delete(card.id)
+  const index = hints.indexOf(card)
+  if (index !== -1) hints.splice(index, 1)
+  if (!wasHidden) {
+    send('conversation-hint-removed', card.id)
+    scheduleSave()
+  }
+}
+
+function removeUtterance(utterance: Utterance) {
+  if (earlyCandidate?.id === utterance.id) cancelEarlyHint()
+  for (const [cardId, start] of earlyStarts) {
+    if (start.utteranceId === utterance.id) earlyStarts.delete(cardId)
+  }
+  const index = utterances.indexOf(utterance)
+  if (index !== -1) utterances.splice(index, 1)
+  send('conversation-utterance-removed', utterance.id)
+  scheduleSave()
+}
+
 /** Tell the page, and the phones; every change to the conversation goes through here */
 function send(channel: string, ...args: unknown[]) {
   markMobileDirty()
@@ -196,7 +253,7 @@ function saveNow() {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = null
   if (!settings.conversationAutoSave) return
-  saveConversation({ startedAt, utterances, hints }).then(
+  saveConversation({ startedAt, utterances, hints: visibleHints() }).then(
     () => {
       saveFailed = false
     },
@@ -236,8 +293,8 @@ function stopStream(cardId: number) {
 function handleSentence(text: string, final: boolean, source?: AudioSource) {
   let utterance = openUtterance(source)
   if (!utterance) {
-    // The recogniser reports silence as an empty sentence; nothing to show
-    if (!text.trim()) return
+    // Silence is reported as an empty sentence; ignored fillers finalized in one shot leave nothing to show
+    if (!text.trim() || (final && isIgnored(text, source))) return
     utterance = { id: nextUtteranceId++, text, final, ...(source ? { source } : {}) }
     utterances.push(utterance)
     startedAt ||= Date.now()
@@ -246,10 +303,8 @@ function handleSentence(text: string, final: boolean, source?: AudioSource) {
     utterance.final = final
   }
 
-  if (final && !utterance.text.trim()) {
-    utterances.splice(utterances.indexOf(utterance), 1)
-    send('conversation-utterance-removed', utterance.id)
-    scheduleSave()
+  if (final && (!utterance.text.trim() || isIgnored(utterance.text, source))) {
+    removeUtterance(utterance)
     // What withdrew a hint came to nothing: write it for what it had
     const waiting = source !== 'microphone' ? waitingCard() : undefined
     if (waiting) void startHint(waiting, waiting.fromId, waiting.toId, 'auto')
@@ -289,6 +344,7 @@ function outgrown(card: HintCard, utterance: Utterance): boolean {
  */
 function onSentenceGrowing(utterance: Utterance) {
   if (settings.conversationHintMode !== 'auto') return
+  if (isIgnored(utterance.text, utterance.source)) return
   const longEnough = countMeaningfulChars(utterance.text) >= minChars()
   for (const card of hints) {
     if (card.source !== 'auto') continue
@@ -302,7 +358,7 @@ function onSentenceGrowing(utterance: Utterance) {
     card.text = ''
     card.reasoning = ''
     card.latencyMs = undefined
-    publishHint(card)
+    if (!hiddenCards.has(card.id)) publishHint(card)
   }
 }
 
@@ -325,6 +381,7 @@ function scheduleEarlyHint(utterance: Utterance) {
   cancelEarlyHint()
   if (settings.conversationHintMode !== 'auto') return
   if (settings.conversationSilenceMs <= EARLY_IDLE) return
+  if (isIgnored(utterance.text, utterance.source)) return
   if (!looksLikeQuestion(utterance.text) || !enoughToAnswer(utterance.text)) return
   const waiting = waitingCard()
   if (!waiting && utterance.id <= hintedUpTo) return
@@ -366,17 +423,18 @@ function onSentenceFinished(utterance: Utterance) {
   void startHint(createCard(hintedUpTo + 1, utterance.id), hintedUpTo + 1, utterance.id, 'auto')
 }
 
-function createCard(fromId: number, toId: number): HintCard {
+function createCard(fromId: number, toId: number, source: HintCard['source'] = 'auto'): HintCard {
   const card: HintCard = {
     id: nextHintId++,
     fromId,
     toId,
-    source: 'auto',
+    source,
     status: 'streaming',
     text: '',
     reasoning: ''
   }
   hints.push(card)
+  if (source === 'auto') hiddenCards.add(card.id)
   return card
 }
 
@@ -386,7 +444,7 @@ function cut(text: string, max: number): string {
 
 /** A hint worth remembering: finished, and with something to say */
 function answered(card: HintCard): boolean {
-  return card.status === 'done' && !!card.text.trim() && !card.text.includes(NO_REPLY)
+  return card.status === 'done' && !!card.text.trim() && !isNoReply(card.text)
 }
 
 /** The latest hints written for earlier sentences, each cut to its start (the opening line comes first) */
@@ -592,6 +650,7 @@ async function startHint(
   if (early && last) {
     earlyStarts.set(card.id, { utteranceId: toId, chars: countMeaningfulChars(last.text) })
   }
+  if (source === 'manual') hiddenCards.delete(card.id)
   Object.assign(card, {
     fromId,
     toId,
@@ -603,11 +662,12 @@ async function startHint(
     latencyMs: undefined
   } satisfies Partial<HintCard>)
   hintedUpTo = Math.max(hintedUpTo, toId)
-  publishHint(card)
+  if (!hiddenCards.has(card.id)) publishHint(card)
 
   if (!getModeProfile('conversation').apiKey) {
     card.status = 'error'
     card.error = '对话模式使用的 AI 配置未填写 API Key，请到「设置 → AI 模型」填写'
+    hiddenCards.delete(card.id)
     publishHint(card)
     return
   }
@@ -631,6 +691,10 @@ async function startHint(
       }
       card.latencyMs ??= Date.now() - stream.startedAt
       card.text += chunk.delta
+      if (hiddenCards.has(card.id)) {
+        if (!maybeNoReply(card.text)) revealCard(card)
+        return
+      }
       send('conversation-hint-chunk', card.id, chunk.delta)
     }
   )
@@ -644,10 +708,19 @@ async function startHint(
     console.error('Error streaming hint:', outcome.error)
     card.status = 'error'
     card.error = extractErrorMessage(outcome.error)
+    hiddenCards.delete(card.id)
     publishHint(card)
     return
   }
+  if (
+    card.source === 'auto' &&
+    (isNoReply(card.text) || (hiddenCards.has(card.id) && !card.text.trim()))
+  ) {
+    dropCard(card)
+    return
+  }
   card.status = 'done'
+  hiddenCards.delete(card.id)
   publishHint(card)
 }
 
@@ -665,16 +738,27 @@ export function requestHint(): boolean {
 
   if (current) {
     const toId = Math.max(current.toId, latest?.id ?? 0)
-    // Already writing exactly this; starting over would only lose what is there
-    if (current.status === 'streaming' && toId === current.toId) return true
+    // Already writing exactly this; reveal it if it was held back for NO_REPLY
+    if (current.status === 'streaming' && toId === current.toId) {
+      current.source = 'manual'
+      if (hiddenCards.has(current.id)) revealCard(current)
+      return true
+    }
     void startHint(current, current.fromId, toId, 'manual')
     return true
   }
-  if (latest && latest.id > hintedUpTo) {
-    void startHint(createCard(hintedUpTo + 1, latest.id), hintedUpTo + 1, latest.id, 'manual')
+  const shown = visibleHints()
+  const shownUpTo = shown.reduce((max, card) => Math.max(max, card.toId), 0)
+  if (latest && latest.id > shownUpTo) {
+    void startHint(
+      createCard(shownUpTo + 1, latest.id, 'manual'),
+      shownUpTo + 1,
+      latest.id,
+      'manual'
+    )
     return true
   }
-  const last = hints.at(-1)
+  const last = shown.at(-1)
   if (last) {
     void startHint(last, last.fromId, last.toId, 'manual', last.text)
     return true
@@ -690,15 +774,15 @@ export function requestHint(): boolean {
 export function stopHints(): boolean {
   cancelEarlyHint()
   let stopped = false
-  for (const card of hints) {
-    if (card.status === 'streaming') {
-      stopStream(card.id)
-      card.status = 'stopped'
-      publishHint(card)
-      stopped = true
-    } else if (card.status === 'waiting') {
-      card.status = 'stopped'
-      publishHint(card)
+  for (const card of [...hints]) {
+    if (card.status === 'streaming' || card.status === 'waiting') {
+      if (card.status === 'streaming') stopStream(card.id)
+      if (hiddenCards.has(card.id)) {
+        dropCard(card)
+      } else {
+        card.status = 'stopped'
+        publishHint(card)
+      }
       stopped = true
     }
   }
@@ -709,6 +793,7 @@ export function clearConversation(): void {
   for (const id of [...streams.keys()]) stopStream(id)
   cancelEarlyHint()
   earlyStarts.clear()
+  hiddenCards.clear()
   resetMemo()
   // The last changes still go into this conversation's file; the next one gets its own
   if (saveTimer) saveNow()
@@ -724,13 +809,13 @@ export function clearConversation(): void {
 function getSnapshot(): ConversationSnapshot {
   return {
     utterances: utterances.map((u) => ({ ...u })),
-    hints: hints.map((card) => ({ ...card })),
+    hints: visibleHints().map((card) => ({ ...card })),
     listening: isTranscriptionRunning('conversation')
   }
 }
 
 registerMobileSource('conversation', () => {
-  const recent = hints.slice(-MOBILE_HINTS)
+  const recent = visibleHints().slice(-MOBILE_HINTS)
   const from = recent[0]?.fromId ?? 0
   return {
     utterances: utterances
@@ -773,12 +858,16 @@ onTranscriptionEnd(() => {
   // ASR may have drained the other side already while own speech remains open.
   const open = openUtterance()
   for (const utterance of utterances.filter((u) => !u.final)) {
+    if (!utterance.text.trim() || isIgnored(utterance.text, utterance.source)) {
+      removeUtterance(utterance)
+      continue
+    }
     utterance.final = true
     publishUtterance(utterance)
   }
+  const openId = open && utterances.includes(open) ? open.id : 0
   const waiting = waitingCard()
-  if (waiting)
-    void startHint(waiting, waiting.fromId, Math.max(waiting.toId, open?.id ?? 0), 'auto')
+  if (waiting) void startHint(waiting, waiting.fromId, Math.max(waiting.toId, openId), 'auto')
 })
 
 // Turned on (or pointed at another folder) mid-conversation: save what is there already
@@ -798,7 +887,9 @@ app.on('will-quit', () => {
   if (!saveTimer) return
   clearTimeout(saveTimer)
   saveTimer = null
-  if (settings.conversationAutoSave) saveConversationSync({ startedAt, utterances, hints })
+  if (settings.conversationAutoSave) {
+    saveConversationSync({ startedAt, utterances, hints: visibleHints() })
+  }
 })
 
 ipcMain.handle('conversation:get-snapshot', () => getSnapshot())

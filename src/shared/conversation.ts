@@ -54,9 +54,72 @@ export interface ConversationSnapshot {
 /** The preset prompts tell the model to answer this when nothing needs a reply */
 export const NO_REPLY = '（无需回应）'
 
-/** Characters that carry meaning: punctuation and spaces do not count towards the minimum */
+const NO_REPLY_VARIANTS = [NO_REPLY, '(无需回应)', '无需回应']
+
+/** Trim whitespace and trailing sentence punctuation before checking for NO_REPLY */
+function trimNoReply(text: string): string {
+  return text.trim().replace(/[。.!！]+$/, '')
+}
+
+/** Whether a finished hint says nothing needs a reply */
+export function isNoReply(text: string): boolean {
+  return NO_REPLY_VARIANTS.includes(trimNoReply(text))
+}
+
+/**
+ * Whether an incomplete automatic hint could still end as NO_REPLY. Holds back
+ * only the first few characters while they stay a prefix of a NO_REPLY form.
+ */
+export function maybeNoReply(text: string): boolean {
+  const trimmed = text.trimStart()
+  if (!trimmed || isNoReply(trimmed)) return true
+  return NO_REPLY_VARIANTS.some((variant) => variant.startsWith(trimmed))
+}
+
+/**
+ * Common standalone backchannels / fillers prefilled for 「屏蔽词」. Matched
+ * against the whole sentence (ignoring punctuation and ASCII case), so normal
+ * sentences starting with them (「嗯，那你们怎么保证…」) stay untouched.
+ */
+export const DEFAULT_CONVERSATION_IGNORE_WORDS = [
+  '嗯、嗯嗯、啊、哦、呃、额',
+  '好、好的、对、是的、明白、了解',
+  'OK、Okay、Yeah、Yes、Right、Sure'
+].join('\n')
+
+/** Strip whitespace, punctuation and symbols and fold case for exact filler matching */
+function normalizeIgnoreKey(text: string): string {
+  return text.replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase()
+}
+
+/** Parse newline / comma / enumeration-comma separated ignore words into normalized keys */
+export function parseIgnoreWords(raw: string): Set<string> {
+  const set = new Set<string>()
+  for (const part of raw.split(/[\r\n,，、;；]+/)) {
+    const key = normalizeIgnoreKey(part)
+    if (key) set.add(key)
+  }
+  return set
+}
+
+/** Whether an entire sentence matches one of the configured ignore words */
+export function isIgnoredSentence(text: string, ignoreSet: ReadonlySet<string>): boolean {
+  if (ignoreSet.size === 0) return false
+  const key = normalizeIgnoreKey(text)
+  return key.length > 0 && ignoreSet.has(key)
+}
+
+/**
+ * CJK characters count as one each; contiguous non-CJK letters/digits (e.g. an
+ * English word like "Okay") count as one unit so 4-letter fillers do not cross
+ * the minimum trigger length on their own.
+ */
+const MEANINGFUL_UNIT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[^\s\p{P}\p{S}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu
+
+/** Units that carry meaning: punctuation and spaces do not count towards the minimum */
 export function countMeaningfulChars(text: string): number {
-  return text.replace(/[\s\p{P}\p{S}]/gu, '').length
+  return text.match(MEANINGFUL_UNIT)?.length ?? 0
 }
 
 /** Ends like a question: a question mark, or a closing particle */

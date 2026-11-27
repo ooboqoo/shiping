@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { FileText, Lightbulb, MessagesSquare, TriangleAlert, Mic } from 'lucide-react'
-import type { ConversationAudioMode } from '../../../../shared/conversation'
+import {
+  DEFAULT_CONVERSATION_IGNORE_WORDS,
+  type ConversationAudioMode
+} from '../../../../shared/conversation'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -13,7 +17,7 @@ import { useSettingsStore, type HintMode } from '@/lib/store/settings'
 import { KnowledgeField } from '../KnowledgeField'
 import { ModeProfileSelect } from '../ModeProfileSelect'
 import { SceneEditor } from '../SceneEditor'
-import { Advanced, Field, SaveDirField, SettingsCard } from '../components'
+import { Field, SaveDirField, SettingsCard } from '../components'
 
 /** Silence that ends a sentence; the recogniser's own default is 1300ms */
 const SILENCE_OPTIONS = [
@@ -41,6 +45,7 @@ export function ConversationSection({
     conversationMicrophoneDeviceId,
     conversationSilenceMs,
     conversationMinChars,
+    conversationIgnoreWords,
     conversationTranscriptHidden,
     conversationAutoSave,
     conversationSaveDir,
@@ -168,49 +173,75 @@ export function ConversationSection({
             />
           </Field>
 
-          <Advanced>
-            <Field
-              label="说完判定"
-              note="对方停顿多久算说完一句话；越短出提示越快。听起来是问句时会提前约 0.35 秒开始出提示，对方接着说就自动重写。重新开始监听后生效"
+          <Field
+            label="说完判定"
+            note="对方停顿多久算说完一句话；越短出提示越快。听起来是问句时会提前约 0.35 秒开始出提示，对方接着说就自动重写。重新开始监听后生效"
+          >
+            <Select
+              value={String(conversationSilenceMs)}
+              onValueChange={(val) => updateSetting('conversationSilenceMs', Number(val))}
             >
-              <Select
-                value={String(conversationSilenceMs)}
-                onValueChange={(val) => updateSetting('conversationSilenceMs', Number(val))}
-              >
-                <SelectTrigger className="w-60 shrink-0 bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SILENCE_OPTIONS.map(({ value, label }) => (
-                    <SelectItem key={value} value={String(value)}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+              <SelectTrigger className="w-60 shrink-0 bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SILENCE_OPTIONS.map(({ value, label }) => (
+                  <SelectItem key={value} value={String(value)}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
 
-            <Field
-              label="最短触发字数"
-              note="对方说完的一句话少于这个字数（不算标点）时不自动出提示，用来跳过「好的」「嗯」；「为什么？」这类问句 2 个字就够"
+          <Field
+            label="最短触发字数"
+            note="对方说完的一句话少于这个字数（不算标点，英文按词计）时不自动出提示，用来跳过「好的」「嗯」；「为什么？」这类问句 2 个字就够"
+          >
+            <Select
+              value={String(conversationMinChars)}
+              onValueChange={(val) => updateSetting('conversationMinChars', Number(val))}
             >
-              <Select
-                value={String(conversationMinChars)}
-                onValueChange={(val) => updateSetting('conversationMinChars', Number(val))}
-              >
-                <SelectTrigger className="w-60 shrink-0 bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MIN_CHARS_OPTIONS.map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n} 个字{n === 4 ? '（默认）' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          </Advanced>
+              <SelectTrigger className="w-60 shrink-0 bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MIN_CHARS_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n} 个字{n === 4 ? '（默认）' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field
+            className="items-start"
+            label="屏蔽词"
+            note={
+              <>
+                对方整句恰好匹配词表里的某一项时自动忽略（忽略标点与英文大小写），不显示、不触发提示也不占上下文；可用换行、逗号或顿号分隔，留空则不屏蔽
+                {conversationIgnoreWords !== DEFAULT_CONVERSATION_IGNORE_WORDS && (
+                  <button
+                    className="ml-2 text-blue-700 hover:underline cursor-pointer"
+                    onClick={() =>
+                      updateSetting('conversationIgnoreWords', DEFAULT_CONVERSATION_IGNORE_WORDS)
+                    }
+                  >
+                    恢复默认
+                  </button>
+                )}
+              </>
+            }
+          >
+            <Textarea
+              value={conversationIgnoreWords}
+              onChange={(e) => updateSetting('conversationIgnoreWords', e.target.value)}
+              placeholder={'嗯、嗯嗯、好的\nOK、Okay'}
+              className="w-60 min-h-20 max-h-40 shrink-0 bg-white text-xs md:text-xs"
+              spellCheck={false}
+            />
+          </Field>
         </div>
       </SettingsCard>
 

@@ -21,7 +21,11 @@ import {
   type AppMode,
   type ReasoningEffort
 } from '../../../../shared/api-profile'
-import type { ConversationAudioMode, HintMode } from '../../../../shared/conversation'
+import {
+  DEFAULT_CONVERSATION_IGNORE_WORDS,
+  type ConversationAudioMode,
+  type HintMode
+} from '../../../../shared/conversation'
 import { DEFAULT_PROXY, normalizeProxySettings, type ProxySettings } from '../../../../shared/proxy'
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE,
@@ -360,6 +364,8 @@ interface Settings {
   conversationSilenceMs: number
   /** 对话模式: a finished sentence shorter than this (punctuation aside) triggers no automatic hint */
   conversationMinChars: number
+  /** 对话模式: standalone filler sentences to ignore (newline / comma separated) */
+  conversationIgnoreWords: string
   /** 对话模式: hide the transcript column to give the hints the whole window */
   conversationTranscriptHidden: boolean
   /** 对话模式: 把每段对话自动保存为 Markdown 文件 */
@@ -501,6 +507,7 @@ const defaultSettings: Settings = {
   conversationMicrophoneDeviceId: '',
   conversationSilenceMs: 800,
   conversationMinChars: 4,
+  conversationIgnoreWords: DEFAULT_CONVERSATION_IGNORE_WORDS,
   conversationTranscriptHidden: false,
   conversationAutoSave: false,
   conversationSaveDir: ''
