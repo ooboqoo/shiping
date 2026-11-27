@@ -57,12 +57,25 @@ export async function startAudioCapture(options?: {
     ) {
       throw new Error('对方音源和自己的麦克风不能选择同一设备')
     }
-    audioContext = new AudioContext({ sampleRate: 16000 })
-    if (audioOutputDeviceId && 'setSinkId' in audioContext) {
+    const ctx = new AudioContext({ sampleRate: 16000 })
+    audioContext = ctx
+    // A shortcut / phone start or an OS audio-device change can leave the context suspended,
+    // halting PCM callbacks until DashScope hits its 23s no-data timeout.
+    const ensureRunning = () => {
+      if (stopping || current !== generation || audioContext !== ctx) return
+      if (ctx.state === 'suspended') {
+        void ctx.resume?.().catch((error) => {
+          console.warn('Failed to resume AudioContext:', error)
+        })
+      }
+    }
+    ctx.addEventListener?.('statechange', ensureRunning)
+    ensureRunning()
+    if (audioOutputDeviceId && 'setSinkId' in ctx) {
       try {
-        await (
-          audioContext as AudioContext & { setSinkId: (id: string) => Promise<void> }
-        ).setSinkId(audioOutputDeviceId)
+        await (ctx as AudioContext & { setSinkId: (id: string) => Promise<void> }).setSinkId(
+          audioOutputDeviceId
+        )
       } catch (error) {
         console.warn('Failed to set audio output device:', error)
       }

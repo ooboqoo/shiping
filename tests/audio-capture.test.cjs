@@ -211,3 +211,36 @@ test('selected interviewer input denied by getUserMedia points to microphone per
     return true
   })
 })
+
+test('suspended AudioContext is resumed at startup and on statechange until stopped', async () => {
+  const h = harness()
+  let resumes = 0
+  let listener
+  const instances = []
+  const BaseContext = global.AudioContext
+  global.AudioContext = class extends BaseContext {
+    state = 'suspended'
+    constructor() {
+      super()
+      instances.push(this)
+    }
+    addEventListener(event, fn) {
+      if (event === 'statechange') listener = fn
+    }
+    resume() {
+      resumes++
+      this.state = 'running'
+      return Promise.resolve()
+    }
+  }
+  await h.api.startAudioCapture()
+  assert.equal(resumes, 1)
+  // Simulate OS audio route change suspending the context mid-call
+  instances[0].state = 'suspended'
+  listener()
+  assert.equal(resumes, 2)
+  h.api.stopAudioCapture()
+  instances[0].state = 'suspended'
+  listener()
+  assert.equal(resumes, 2, 'must not resume a closed AudioContext after stop')
+})

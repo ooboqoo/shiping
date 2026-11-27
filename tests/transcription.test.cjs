@@ -157,7 +157,9 @@ test('new start waits for a draining old session and creates the requested purpo
   await starting
   assert.equal(h.sockets.length, 3)
   assert(h.api.isTranscriptionRunning('screenshot'))
+  const done = h.handlers.get('stop-transcription')()
   h.sockets[2].emit('message', Buffer.from(JSON.stringify({ header: { event: 'task-finished' } })))
+  await done
 })
 
 test('ASR failure notifies existing hooks once and closes every source', async () => {
@@ -288,4 +290,272 @@ test('the preload drops the prefix Electron puts on a rejected start', async (t)
   await assert.rejects(global.window.api.startTranscription('key'), {
     message: '百炼平台 API Key 无效（HTTP 401）'
   })
+})
+
+test('run-task enables DashScope heartbeat and ignores heartbeat frames without wiping partial text', async () => {
+  const h = harness(),
+    sentences = []
+  h.api.onConversationSentence((...v) => sentences.push(v))
+  await h.handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system']
+  })
+  const runTask = JSON.parse(h.sockets[0].sent[0])
+  assert.equal(runTask.payload.parameters.heartbeat, true)
+  h.sockets[0].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({
+        header: { event: 'result-generated' },
+        payload: { output: { sentence: { text: '正在说的话', sentence_end: false } } }
+      })
+    )
+  )
+  h.sockets[0].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({
+        header: { event: 'result-generated' },
+        payload: {
+          output: {
+            sentence: { text: '', heartbeat: true, sentence_id: 0, sentence_end: false }
+          }
+        }
+      })
+    )
+  )
+  assert.deepEqual(sentences, [['正在说的话', false, 'system']])
+  await h.handlers.get('stop-transcription')()
+})
+
+test('timeout on one source in dual mode reconnects only that source without interrupting the other', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const h = harness(),
+    sentences = [],
+    errors = [],
+    ends = []
+  h.api.onConversationSentence((...v) => sentences.push(v))
+  h.api.onTranscriptionError((m) => errors.push(m))
+  h.api.onTranscriptionEnd(() => ends.push(true))
+  await h.handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system', 'microphone']
+  })
+  // Simulate an open partial on microphone before it times out on silence
+  h.sockets[1].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({
+        header: { event: 'result-generated' },
+        payload: { output: { sentence: { text: '我刚才说', sentence_end: false } } }
+      })
+    )
+  )
+  h.sockets[1].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({
+        header: {
+          event: 'task-failed',
+          error_code: 'CLIENT_ERROR',
+          error_message: 'request timeout after 60 seconds'
+        }
+      })
+    )
+  )
+  // System socket remains untouched; no fatal error or stop event was fired
+  assert.equal(errors.length, 0)
+  assert.equal(ends.length, 0)
+  assert.equal(h.api.isTranscriptionRunning('conversation'), true)
+  assert.equal(h.sockets[0].readyState, 1)
+  assert.equal(h.sockets[1].readyState, 3)
+  // The open microphone partial was committed as final so the new task cannot overwrite it
+  assert.deepEqual(sentences.at(-1), ['我刚才说', true, 'microphone'])
+  // Interviewer speech continues uninterrupted while microphone is waiting to reconnect
+  h.sockets[0].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({
+        header: { event: 'result-generated' },
+        payload: { output: { sentence: { text: '对方继续说', sentence_end: true } } }
+      })
+    )
+  )
+  assert.deepEqual(sentences.at(-1), ['对方继续说', true, 'system'])
+  // Audio sent for microphone during reconnect is buffered and flushed on recovery
+  h.handlers.get('transcription-audio-chunk')(null, new Uint8Array([9, 8]).buffer, 'microphone')
+  t.mock.timers.tick(1000)
+  await new Promise((r) => setImmediate(r))
+  assert.equal(h.sockets.length, 3)
+  assert(h.sockets[2].sent.some((chunk) => Buffer.isBuffer(chunk) && chunk[0] === 9))
+  assert(
+    h.messages.some(([channel, text]) => channel === 'conversation-notice' && /自动恢复/.test(text))
+  )
+  await h.handlers.get('stop-transcription')()
+})
+
+test('screenshot mode commits partial text before reconnecting so a new task appends cleanly', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const h = harness()
+  await h.handlers.get('start-transcription')(null, 'test', { purpose: 'screenshot' })
+  h.sockets[0].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({
+        header: { event: 'result-generated' },
+        payload: { output: { sentence: { text: '前半句', sentence_end: false } } }
+      })
+    )
+  )
+  h.sockets[0].emit('close')
+  t.mock.timers.tick(1000)
+  await new Promise((r) => setImmediate(r))
+  assert.equal(h.sockets.length, 2)
+  h.sockets[1].emit(
+    'message',
+    Buffer.from(
+      JSON.stringify({
+        header: { event: 'result-generated' },
+        payload: { output: { sentence: { text: '后半句', sentence_end: false } } }
+      })
+    )
+  )
+  assert.equal(h.api.getTranscriptionText(), '前半句后半句')
+  await h.handlers.get('stop-transcription')()
+})
+
+test('repeated handshake failures during reconnect stop listening after max retries', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const sockets = [],
+    handlers = new Map(),
+    errors = [],
+    ends = []
+  class FlakySocket extends EventEmitter {
+    static OPEN = 1
+    static CONNECTING = 0
+    readyState = 1
+    sent = []
+    constructor() {
+      super()
+      this.index = sockets.length
+      sockets.push(this)
+      if (this.index === 0) queueMicrotask(() => this.emit('open'))
+      else
+        queueMicrotask(() =>
+          this.emit('error', Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }))
+        )
+    }
+    send(data) {
+      this.sent.push(data)
+      if (typeof data === 'string' && JSON.parse(data).header.action === 'run-task') {
+        queueMicrotask(() =>
+          this.emit('message', Buffer.from(JSON.stringify({ header: { event: 'task-started' } })))
+        )
+      }
+    }
+    close() {
+      this.readyState = 3
+    }
+    terminate() {
+      this.readyState = 3
+    }
+  }
+  global.mainWindow = { isDestroyed: () => false, webContents: { send: () => undefined } }
+  const api = createLoader({
+    electron: {
+      ipcMain: { handle: (k, v) => handlers.set(k, v), on: (k, v) => handlers.set(k, v) }
+    },
+    ws: FlakySocket
+  })('src/main/transcription.ts')
+  api.onTranscriptionError((m) => errors.push(m))
+  api.onTranscriptionEnd(() => ends.push(true))
+  await handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system']
+  })
+  // Trigger initial disconnect after startup
+  sockets[0].emit('close')
+  for (const delay of [1000, 2000, 4000, 8000]) {
+    t.mock.timers.tick(delay)
+    await new Promise((r) => setImmediate(r))
+  }
+  // 1 initial + 4 retries = 5 sockets; the 4th retry error exhausts attempts and fails
+  assert.equal(sockets.length, 5)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0], /超时/)
+  assert.equal(ends.length, 1)
+  assert.equal(api.isTranscriptionRunning('conversation'), false)
+})
+
+test('ping watchdog terminates a silent half-open socket and reconnects, while pong keeps it alive', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const sockets = [],
+    handlers = new Map()
+  class PingSocket extends EventEmitter {
+    static OPEN = 1
+    static CONNECTING = 0
+    readyState = 1
+    pings = 0
+    terminated = false
+    bufferedAmount = 0
+    constructor() {
+      super()
+      sockets.push(this)
+      queueMicrotask(() => this.emit('open'))
+    }
+    send(data) {
+      if (typeof data === 'string' && JSON.parse(data).header.action === 'run-task') {
+        queueMicrotask(() =>
+          this.emit('message', Buffer.from(JSON.stringify({ header: { event: 'task-started' } })))
+        )
+      }
+    }
+    ping() {
+      this.pings++
+    }
+    close() {
+      this.readyState = 3
+    }
+    terminate() {
+      this.terminated = true
+      this.readyState = 3
+    }
+  }
+  global.mainWindow = { isDestroyed: () => false, webContents: { send: () => undefined } }
+  const api = createLoader({
+    electron: {
+      ipcMain: { handle: (k, v) => handlers.set(k, v), on: (k, v) => handlers.set(k, v) }
+    },
+    ws: PingSocket
+  })('src/main/transcription.ts')
+  await handlers.get('start-transcription')(null, 'test', {
+    purpose: 'conversation',
+    sources: ['system']
+  })
+  // First ping receives pong -> stays alive
+  t.mock.timers.tick(20_000)
+  assert.equal(sockets[0].pings, 1)
+  sockets[0].emit('pong')
+  t.mock.timers.tick(10_000)
+  assert.equal(sockets[0].terminated, false)
+  assert.equal(sockets.length, 1)
+  // Second ping gets no pong -> terminated after 10s and reconnected 1s later
+  t.mock.timers.tick(10_000)
+  assert.equal(sockets[0].pings, 2)
+  t.mock.timers.tick(10_000)
+  assert.equal(sockets[0].terminated, true)
+  t.mock.timers.tick(1000)
+  await new Promise((r) => setImmediate(r))
+  assert.equal(sockets.length, 2)
+  assert.equal(api.isTranscriptionRunning('conversation'), true)
+  // Backpressure overflow also triggers reconnect instead of stalling
+  sockets[1].bufferedAmount = 600 * 1024
+  handlers.get('transcription-audio-chunk')(null, new Uint8Array([1, 2]).buffer, 'system')
+  assert.equal(sockets[1].terminated, true)
+  // Stopping while waiting to reconnect cancels the scheduled socket cleanly
+  const stop = handlers.get('stop-transcription')()
+  await stop
+  t.mock.timers.tick(5000)
+  assert.equal(sockets.length, 2)
+  assert.equal(api.isTranscriptionRunning('conversation'), false)
 })

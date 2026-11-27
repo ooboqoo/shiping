@@ -4,6 +4,15 @@ import { randomUUID } from 'node:crypto'
 import type { AudioSource } from '../shared/conversation'
 
 const WS_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference/'
+const START_TIMEOUT_MS = 8000
+const PING_INTERVAL_MS = 20_000
+const PONG_TIMEOUT_MS = 10_000
+const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000]
+/** ~4s of 16kHz mono 16-bit PCM (2048 samples ≈ 128ms per chunk) kept across startup or a brief reconnect */
+const MAX_BUFFERED_CHUNKS = 32
+/** ~16s of unsent PCM in the socket write buffer signals a stalled TCP connection */
+const MAX_BUFFERED_AMOUNT = 512 * 1024
+
 export type TranscriptionPurpose = 'screenshot' | 'conversation'
 export interface TranscriptionOptions {
   /** Screenshot text or conversation sentences, without changing the other's text. */
@@ -13,13 +22,24 @@ export interface TranscriptionOptions {
   sources?: AudioSource[]
 }
 interface Session {
-  socket: WebSocket
+  socket: WebSocket | null
   taskId: string
   source: AudioSource
+  apiKey: string
+  maxSentenceSilence?: number
   started: boolean
+  /** True once initial startup succeeded; only established sessions auto-reconnect */
+  everStarted: boolean
   buffered: Buffer[]
-  resolveStart: () => void
-  rejectStart: (error: Error) => void
+  /** Unfinalised partial text on this source, committed before reconnecting so a new task does not overwrite it */
+  lastPartial: string
+  reconnectAttempts: number
+  startTimer?: ReturnType<typeof setTimeout>
+  pingInterval?: ReturnType<typeof setInterval>
+  pongTimer?: ReturnType<typeof setTimeout>
+  reconnectTimer?: ReturnType<typeof setTimeout>
+  resolveStart?: () => void
+  rejectStart?: (error: Error) => void
   resolveStop?: () => void
 }
 const sessions = new Map<AudioSource, Session>()
@@ -56,19 +76,56 @@ function send(channel: string, ...args: unknown[]) {
   const window = global.mainWindow
   if (window && !window.isDestroyed()) window.webContents.send(channel, ...args)
 }
+function clearKeepalive(session: Session) {
+  if (session.pingInterval) {
+    clearInterval(session.pingInterval)
+    session.pingInterval = undefined
+  }
+  if (session.pongTimer) {
+    clearTimeout(session.pongTimer)
+    session.pongTimer = undefined
+  }
+}
+function clearSessionTimers(session: Session) {
+  if (session.startTimer) {
+    clearTimeout(session.startTimer)
+    session.startTimer = undefined
+  }
+  clearKeepalive(session)
+  if (session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer)
+    session.reconnectTimer = undefined
+  }
+}
+function detachSocket(session: Session, force = false) {
+  clearKeepalive(session)
+  if (session.startTimer) {
+    clearTimeout(session.startTimer)
+    session.startTimer = undefined
+  }
+  const socket = session.socket
+  session.socket = null
+  session.started = false
+  if (!socket) return
+  socket.removeAllListeners()
+  // ws emits an asynchronous error when close() cancels a pending handshake.
+  // This session is detached: consume shutdown errors without affecting a new start.
+  socket.on('error', () => undefined)
+  if (force && typeof socket.terminate === 'function') {
+    socket.terminate()
+  } else if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+    socket.close()
+  }
+}
 function cleanup() {
   for (const session of sessions.values()) {
-    session.rejectStart(new Error('语音识别已停止'))
+    clearSessionTimers(session)
+    session.rejectStart?.(new Error('语音识别已停止'))
+    session.resolveStart = undefined
+    session.rejectStart = undefined
     session.resolveStop?.()
-    session.socket.removeAllListeners()
-    // ws emits an asynchronous error when close() cancels a pending handshake.
-    // This session is detached: consume shutdown errors without affecting a new start.
-    session.socket.on('error', () => undefined)
-    if (
-      session.socket.readyState === WebSocket.OPEN ||
-      session.socket.readyState === WebSocket.CONNECTING
-    )
-      session.socket.close()
+    session.resolveStop = undefined
+    detachSocket(session)
   }
   sessions.clear()
 }
@@ -81,6 +138,24 @@ type AsrFailure = Error & { code?: string }
 
 const NETWORK_CODES =
   /^(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EPIPE)$|CERT|SSL|TLS/
+const RETRYABLE_NETWORK_CODES =
+  /^(ETIMEDOUT|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ECONNABORTED|EHOSTUNREACH|ENETUNREACH|EPIPE)$/
+const NON_RETRYABLE_PATTERNS =
+  /InvalidApiKey|Invalid API-?key|Arrearage|AccessDenied|good standing|Throttling/i
+const RETRYABLE_FAILURE_PATTERNS =
+  /(?:request\s+)?timeout|timed[\s-]*out|idle|heartbeat|disconnect|internal|server.?error|service.?unavailable|connection.*(?:closed|reset|lost|broken)/i
+
+/** Whether a mid-session error is transient and worth reconnecting this source on its own */
+function isRecoverableError(error: AsrFailure | string): boolean {
+  if (typeof error === 'string') return true
+  const status = /Unexpected server response: (\d+)/.exec(error.message)?.[1]
+  if (status) return /^5\d\d$/.test(status)
+  const said = `${error.code ?? ''} ${error.message}`
+  if (NON_RETRYABLE_PATTERNS.test(said)) return false
+  if (error.code && /CERT|SSL|TLS|ENOTFOUND/.test(error.code)) return false
+  if (error.code && RETRYABLE_NETWORK_CODES.test(error.code)) return true
+  return RETRYABLE_FAILURE_PATTERNS.test(said)
+}
 
 /**
  * A failure in words the user can act on, with the recogniser's own code (or
@@ -106,10 +181,29 @@ function describeFailure(error: AsrFailure): { message: string; shared: boolean 
     return { message: `连接百炼平台超时，请检查网络${detail}`, shared: true }
   if (error.code && NETWORK_CODES.test(error.code))
     return { message: `连不上百炼平台，请检查网络${detail}`, shared: true }
+  if (/(?:request\s+)?timeout|timed[\s-]*out/i.test(said))
+    return { message: `语音识别连接超时，请检查网络或重新开始监听${detail}`, shared: false }
   if (status) return { message: `百炼平台语音识别连接失败${detail}`, shared: true }
   return {
     message: `语音识别失败：${error.message}${error.code ? `（${error.code}）` : ''}`,
     shared: false
+  }
+}
+
+function sourcePrefix(session: Session): string {
+  if (sessions.size <= 1) return ''
+  return session.source === 'microphone' ? '麦克风' : '对方音源'
+}
+
+/** Flush any unfinalised text before a source reconnects so the new ASR task starts a fresh sentence */
+function commitOpenPartial(session: Session) {
+  if (purpose === 'conversation') {
+    const text = session.lastPartial
+    session.lastPartial = ''
+    if (text.trim()) sentenceListeners.forEach((listener) => listener(text, true, session.source))
+  } else if (currentPartial) {
+    accumulatedText += currentPartial
+    currentPartial = ''
   }
 }
 
@@ -122,12 +216,12 @@ function fail(session: Session, error: AsrFailure | string) {
   const { message: text, shared } =
     typeof error === 'string' ? { message: error, shared: false } : describeFailure(error)
   // Name the source only when two are running; 截图模式 and single-source listening have one
-  const message =
-    sessions.size > 1 && !shared
-      ? `${session.source === 'microphone' ? '麦克风' : '对方音源'}的${text}`
-      : text
+  const prefix = shared ? '' : sourcePrefix(session)
+  const message = prefix ? `${prefix}的${text}` : text
   // The same words for a start still waiting on it (the page shows that one)
-  session.rejectStart(new Error(message))
+  session.rejectStart?.(new Error(message))
+  session.resolveStart = undefined
+  session.rejectStart = undefined
   if (stopping) {
     session.resolveStop?.()
     return
@@ -137,6 +231,190 @@ function fail(session: Session, error: AsrFailure | string) {
   cleanup()
   reportStopped()
 }
+
+/**
+ * Reconnect only the failed source on transient mid-session disconnects/timeouts;
+ * fatal errors or exhausted retries fall through to `fail()`.
+ */
+function handleFailure(session: Session, error: AsrFailure | string, forceClose = false) {
+  if (sessions.get(session.source) !== session) return
+  if (stopping) {
+    session.resolveStop?.()
+    return
+  }
+  if (
+    session.everStarted &&
+    isRecoverableError(error) &&
+    session.reconnectAttempts < RECONNECT_DELAYS_MS.length
+  ) {
+    const delay = RECONNECT_DELAYS_MS[session.reconnectAttempts]
+    session.reconnectAttempts++
+    detachSocket(session, forceClose)
+    commitOpenPartial(session)
+    if (session.reconnectAttempts === 1 && purpose === 'conversation') {
+      const prefix = sourcePrefix(session)
+      send('conversation-notice', `${prefix ? `${prefix}的` : ''}语音识别连接波动，正在自动重连…`)
+    }
+    session.reconnectTimer = setTimeout(() => {
+      session.reconnectTimer = undefined
+      if (stopping || sessions.get(session.source) !== session) return
+      openSocket(session)
+    }, delay)
+    session.reconnectTimer.unref?.()
+    return
+  }
+  fail(session, error)
+}
+
+function startKeepalive(session: Session, socket: WebSocket) {
+  clearKeepalive(session)
+  if (typeof socket.ping !== 'function') return
+  session.pingInterval = setInterval(() => {
+    if (stopping || sessions.get(session.source) !== session || session.socket !== socket) {
+      clearKeepalive(session)
+      return
+    }
+    if (socket.readyState !== WebSocket.OPEN) return
+    if (session.pongTimer) return
+    session.pongTimer = setTimeout(() => {
+      session.pongTimer = undefined
+      if (stopping || sessions.get(session.source) !== session || session.socket !== socket) return
+      handleFailure(session, '语音识别连接超时，请重新开始监听', true)
+    }, PONG_TIMEOUT_MS)
+    session.pongTimer.unref?.()
+    try {
+      socket.ping()
+    } catch (error) {
+      handleFailure(session, error instanceof Error ? error : new Error(String(error)), true)
+    }
+  }, PING_INTERVAL_MS)
+  session.pingInterval.unref?.()
+}
+
+function openSocket(session: Session) {
+  detachSocket(session)
+  const { source } = session
+  const socket = new WebSocket(WS_URL, { headers: { Authorization: `bearer ${session.apiKey}` } })
+  session.socket = socket
+  session.taskId = randomUUID()
+  session.started = false
+  session.startTimer = setTimeout(() => {
+    session.startTimer = undefined
+    if (sessions.get(source) !== session || session.socket !== socket) return
+    handleFailure(session, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }), true)
+  }, START_TIMEOUT_MS)
+  session.startTimer.unref?.()
+
+  const markAlive = () => {
+    if (session.pongTimer) {
+      clearTimeout(session.pongTimer)
+      session.pongTimer = undefined
+    }
+  }
+
+  socket.on('open', () => {
+    if (sessions.get(source) !== session || session.socket !== socket) return
+    socket.send(
+      JSON.stringify({
+        header: { action: 'run-task', task_id: session.taskId, streaming: 'duplex' },
+        payload: {
+          task_group: 'audio',
+          task: 'asr',
+          function: 'recognition',
+          model: 'fun-asr-realtime',
+          parameters: {
+            format: 'pcm',
+            sample_rate: 16000,
+            heartbeat: true,
+            ...(session.maxSentenceSilence
+              ? {
+                  max_sentence_silence: Math.min(
+                    // The recogniser accepts 200–6000ms
+                    6000,
+                    Math.max(200, session.maxSentenceSilence)
+                  )
+                }
+              : {})
+          },
+          input: {}
+        }
+      })
+    )
+  })
+  socket.on('pong', () => {
+    if (sessions.get(source) !== session || session.socket !== socket) return
+    markAlive()
+  })
+  socket.on('message', (data: WebSocket.Data) => {
+    if (sessions.get(source) !== session || session.socket !== socket) return
+    markAlive()
+    try {
+      const message = JSON.parse(data.toString())
+      const event = message.header?.event
+      if (event === 'task-started') {
+        if (session.startTimer) {
+          clearTimeout(session.startTimer)
+          session.startTimer = undefined
+        }
+        const recovered = session.everStarted && session.reconnectAttempts > 0
+        session.started = true
+        session.everStarted = true
+        session.reconnectAttempts = 0
+        const queued = session.buffered
+        session.buffered = []
+        for (const chunk of queued) {
+          if (socket.readyState !== WebSocket.OPEN) break
+          socket.send(chunk)
+        }
+        startKeepalive(session, socket)
+        session.resolveStart?.()
+        session.resolveStart = undefined
+        session.rejectStart = undefined
+        if (recovered && purpose === 'conversation') {
+          const prefix = sourcePrefix(session)
+          send('conversation-notice', `${prefix ? `${prefix}的` : ''}语音识别已自动恢复`)
+        }
+      } else if (event === 'result-generated') {
+        const sentence = message.payload?.output?.sentence
+        if (!sentence || sentence.heartbeat) return
+        const text: string = sentence.text || ''
+        const final = sentence.sentence_end === true
+        if (purpose === 'conversation') {
+          session.lastPartial = final ? '' : text
+          sentenceListeners.forEach((listener) => listener(text, final, source))
+        } else {
+          if (final) {
+            accumulatedText += text
+            currentPartial = ''
+          } else currentPartial = text
+          send('transcription-text', { text: getTranscriptionText(), isPartial: !final })
+        }
+      } else if (event === 'task-failed') {
+        handleFailure(
+          session,
+          Object.assign(new Error(message.header?.error_message || '未知错误'), {
+            code: message.header?.error_code || undefined
+          })
+        )
+      } else if (event === 'task-finished') {
+        if (stopping) session.resolveStop?.()
+        else handleFailure(session, '语音识别连接已结束，请重新开始监听')
+      }
+    } catch (error) {
+      console.error('Failed to parse transcription message:', error)
+    }
+  })
+  socket.on('error', (error) => {
+    if (sessions.get(source) !== session || session.socket !== socket) return
+    handleFailure(session, error)
+  })
+  socket.on('close', () => {
+    if (sessions.get(source) !== session || session.socket !== socket) return
+    if (stopping) session.resolveStop?.()
+    else handleFailure(session, '语音识别连接中断，请重新开始监听')
+  })
+}
+
 async function startTranscription(apiKey: string, options: TranscriptionOptions = {}) {
   stopping = false
   purpose = options.purpose ?? 'screenshot'
@@ -152,99 +430,23 @@ async function startTranscription(apiKey: string, options: TranscriptionOptions 
       sources.map(
         (source) =>
           new Promise<void>((resolve, reject) => {
-            const socket = new WebSocket(WS_URL, { headers: { Authorization: `bearer ${apiKey}` } })
-            const timeout = setTimeout(
-              () => fail(session, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })),
-              8000
-            )
             const session: Session = {
-              socket,
-              taskId: randomUUID(),
+              socket: null,
+              taskId: '',
               source,
+              apiKey,
+              maxSentenceSilence: options.maxSentenceSilence,
               started: false,
+              everStarted: false,
               buffered: [],
-              resolveStart: () => {
-                clearTimeout(timeout)
-                resolve()
-              },
-              rejectStart: (error) => {
-                clearTimeout(timeout)
-                reject(error)
-              }
+              lastPartial: '',
+              reconnectAttempts: 0,
+              resolveStart: resolve,
+              rejectStart: reject
             }
             owned.add(session)
             sessions.set(source, session)
-            socket.on('open', () => {
-              socket.send(
-                JSON.stringify({
-                  header: { action: 'run-task', task_id: session.taskId, streaming: 'duplex' },
-                  payload: {
-                    task_group: 'audio',
-                    task: 'asr',
-                    function: 'recognition',
-                    model: 'fun-asr-realtime',
-                    parameters: {
-                      format: 'pcm',
-                      sample_rate: 16000,
-                      ...(options.maxSentenceSilence
-                        ? {
-                            max_sentence_silence: Math.min(
-                              // The recogniser accepts 200–6000ms
-                              6000,
-                              Math.max(200, options.maxSentenceSilence)
-                            )
-                          }
-                        : {})
-                    },
-                    input: {}
-                  }
-                })
-              )
-            })
-            socket.on('message', (data: WebSocket.Data) => {
-              if (sessions.get(source) !== session) return
-              try {
-                const message = JSON.parse(data.toString())
-                const event = message.header?.event
-                if (event === 'task-started') {
-                  session.started = true
-                  session.buffered.forEach((chunk) => socket.send(chunk))
-                  session.buffered = []
-                  session.resolveStart()
-                } else if (event === 'result-generated') {
-                  const sentence = message.payload?.output?.sentence
-                  if (!sentence) return
-                  const text: string = sentence.text || ''
-                  const final = sentence.sentence_end === true
-                  if (purpose === 'conversation')
-                    sentenceListeners.forEach((listener) => listener(text, final, source))
-                  else {
-                    if (final) {
-                      accumulatedText += text
-                      currentPartial = ''
-                    } else currentPartial = text
-                    send('transcription-text', { text: getTranscriptionText(), isPartial: !final })
-                  }
-                } else if (event === 'task-failed')
-                  fail(
-                    session,
-                    Object.assign(new Error(message.header?.error_message || '未知错误'), {
-                      code: message.header?.error_code || undefined
-                    })
-                  )
-                else if (event === 'task-finished') {
-                  if (stopping) session.resolveStop?.()
-                  else fail(session, '语音识别连接已结束，请重新开始监听')
-                }
-              } catch (error) {
-                console.error('Failed to parse transcription message:', error)
-              }
-            })
-            socket.on('error', (error) => fail(session, error))
-            socket.on('close', () => {
-              if (stopping) session.resolveStop?.()
-              else fail(session, '语音识别连接中断，请重新开始监听')
-            })
+            openSocket(session)
           })
       )
     )
@@ -266,12 +468,13 @@ function stopTranscription(): Promise<void> {
       [...sessions.values()].map(
         (session) =>
           new Promise<void>((resolve) => {
+            clearSessionTimers(session)
             const timeout = setTimeout(resolve, 700)
             session.resolveStop = () => {
               clearTimeout(timeout)
               resolve()
             }
-            if (session.started && session.socket.readyState === WebSocket.OPEN)
+            if (session.started && session.socket?.readyState === WebSocket.OPEN)
               session.socket.send(
                 JSON.stringify({
                   header: { action: 'finish-task', task_id: session.taskId, streaming: 'duplex' },
@@ -307,10 +510,24 @@ function handleAudioChunk(chunk: ArrayBuffer, source: AudioSource = 'system') {
   const session = sessions.get(source)
   if (!session) return
   const buffer = Buffer.from(chunk)
-  if (session.started && session.socket.readyState === WebSocket.OPEN) session.socket.send(buffer)
-  else {
+  const socket = session.socket
+  if (session.started && socket && socket.readyState === WebSocket.OPEN) {
+    if (typeof socket.bufferedAmount === 'number' && socket.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+      handleFailure(session, '语音识别连接超时，请重新开始监听', true)
+      return
+    }
+    try {
+      socket.send(buffer, (error) => {
+        if (error && sessions.get(source) === session && session.socket === socket) {
+          handleFailure(session, error, true)
+        }
+      })
+    } catch (error) {
+      handleFailure(session, error instanceof Error ? error : new Error(String(error)), true)
+    }
+  } else {
     session.buffered.push(buffer)
-    if (session.buffered.length > 16) session.buffered.shift()
+    if (session.buffered.length > MAX_BUFFERED_CHUNKS) session.buffered.shift()
   }
 }
 export function getTranscriptionText(): string {
