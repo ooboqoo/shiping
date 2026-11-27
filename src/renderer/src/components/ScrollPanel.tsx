@@ -59,8 +59,11 @@ export function ScrollPanel({
         // `container-type: size` lets content size itself to the visible height (cqh)
         className="size-full rounded-[inherit] outline-none [container-type:size]"
       >
-        <ScrollAreaPrimitive.Content className={contentClassName} style={{ display: 'block' }}>
-          {children}
+        {/* Radix forces `display: table` inline; cancel it on Content and put
+            caller layout classes (`flex`, `gap-*`, …) inside so inline `block`
+            does not override them */}
+        <ScrollAreaPrimitive.Content style={{ display: 'block' }}>
+          <div className={contentClassName}>{children}</div>
         </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar
