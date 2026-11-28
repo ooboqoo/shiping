@@ -5,3 +5,6 @@ dist
 .eslintcache
 *.log*
 .env*
+
+# 录演示动图的脚本和道具页（只在开发机上跑，录完的动图才进仓库）
+docs/demo-videos/tools/
